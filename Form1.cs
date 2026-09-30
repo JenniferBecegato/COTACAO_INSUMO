@@ -430,8 +430,12 @@ namespace COTACAO_INSUMO
                     DataGridViewAutoSizeColumnsMode.Fill,
 
                 EnableHeadersVisualStyles = false,
-                ColumnHeadersHeight = 34
+                ColumnHeadersHeight = 34,
+
+                ScrollBars = ScrollBars.Both,
             };
+
+            dgv.ScrollBars = ScrollBars.Vertical;
 
             dgv.RowTemplate.Height = 32;
 
@@ -758,7 +762,7 @@ namespace COTACAO_INSUMO
                 new Point(10, 55);
 
             Label lblLoja =
-                CriarLabelSecao("1. Loja *");
+                CriarLabelSecao("1. Empresa");
 
             lblLoja.Location =
                 new Point(10, 15);
@@ -790,7 +794,7 @@ namespace COTACAO_INSUMO
                 btnDrugstore.BackColor = corAzul;
 
             Label lblMesAno =
-                CriarLabelSecao("2. Mês e ano *");
+                CriarLabelSecao("2. Mês e ano ");
 
             lblMesAno.Location =
                 new Point(10, 105);
@@ -1103,20 +1107,67 @@ namespace COTACAO_INSUMO
             painelExcel.Controls.Add(selecionarExcel);
 
             Label obs1 =
-                CriarTexto(
-                    "Cotação existente: não selecione Excel."+"\n"+"O sistema utilizará a planilha já salva."
-                );
+     new Label
+     {
+         Text =
+             "Cotação existente: não selecione Excel.\n" +
+             "O sistema utilizará a planilha já salva.",
 
-            obs1.Location =
-                new Point(18, 120);
+         ForeColor =
+             corTextoSecundario,
+
+         Font =
+             new Font(
+                 "Segoe UI",
+                 9.5F
+             ),
+
+         AutoSize =
+             false,
+
+         Width =
+             410,
+
+         Height =
+             42,
+
+         Location =
+             new Point(
+                 18,
+                 115
+             )
+     };
 
             Label obs2 =
-                CriarTexto(
-                    "Cotação nova: selecione o Excel-base para criar a nova planilha."
-                );
+                new Label
+                {
+                    Text =
+                        "Cotação nova: selecione o Excel-base para criar uma nova planilha.",
 
-            obs2.Location =
-                new Point(18, 145);
+                    ForeColor =
+                        corTextoSecundario,
+
+                    Font =
+                        new Font(
+                            "Segoe UI",
+                            9.5F
+                        ),
+
+                    AutoSize =
+                        false,
+
+                    Width =
+                        410,
+
+                    Height =
+                        30,
+
+                    Location =
+                        new Point(
+                            18,
+                            165
+                        )
+                };
 
             cardExcel.Controls.Add(lblExcel);
             cardExcel.Controls.Add(painelExcel);
@@ -2106,6 +2157,32 @@ namespace COTACAO_INSUMO
                 "Última modificação"
             );
 
+            DataGridViewButtonColumn abrirTabela =
+    new DataGridViewButtonColumn
+    {
+        Name =
+            "AbrirTabela",
+
+        HeaderText =
+            "Tabela",
+
+        Text =
+            "Abrir tabela",
+
+        UseColumnTextForButtonValue =
+            true,
+
+        Width =
+            110,
+
+        AutoSizeMode =
+            DataGridViewAutoSizeColumnMode.None
+    };
+
+            dgv.Columns.Add(
+                abrirTabela
+            );
+
             DataGridViewButtonColumn naoEncontrados =
                 new DataGridViewButtonColumn
                 {
@@ -2207,20 +2284,83 @@ namespace COTACAO_INSUMO
 
             vazio.Location =
                 new Point(10, 500);
-
             dgv.CellContentClick +=
                 (s, e) =>
                 {
                     if (e.RowIndex < 0)
                         return;
 
+                    string nomeColuna =
+                        dgv.Columns[e.ColumnIndex].Name;
+
+                    string mesTexto =
+                        dgv.Rows[e.RowIndex]
+                            .Cells["Mes"]
+                            .Value?
+                            .ToString()
+                        ?? "";
+
+                    string anoTexto =
+                        dgv.Rows[e.RowIndex]
+                            .Cells["Ano"]
+                            .Value?
+                            .ToString()
+                        ?? "";
+
                     if (
-                        dgv.Columns[
-                            e.ColumnIndex
-                        ].Name ==
+                        !int.TryParse(
+                            anoTexto,
+                            out int ano
+                        )
+                    )
+                    {
+                        return;
+                    }
+
+                    int mes =
+                        ObterNumeroMes(
+                            mesTexto
+                        );
+
+                    if (mes == 0)
+                        return;
+
+                    // =====================================================
+                    // ABRIR TABELA
+                    // =====================================================
+
+                    if (
+                        nomeColuna ==
+                        "AbrirTabela"
+                    )
+                    {
+                        AbrirTabelaCotacao(
+                            lojaConsultaSelecionada,
+                            mes,
+                            ano
+                        );
+
+                        return;
+                    }
+
+                    // =====================================================
+                    // NÃO ENCONTRADOS
+                    // =====================================================
+
+                    if (
+                        nomeColuna ==
                         "NaoEncontrados"
                     )
                     {
+                        lojaSelecionada =
+                            lojaConsultaSelecionada;
+
+                        mesSelecionado =
+                            mes;
+
+                        anoSelecionado =
+                            ano;
+
                         AbrirTelaNaoEncontrados();
                     }
                 };
@@ -2233,6 +2373,52 @@ namespace COTACAO_INSUMO
             tela.Controls.Add(vazio);
 
             painelConteudo.Controls.Add(tela);
+        }
+
+        private int ObterNumeroMes(
+    string mes)
+        {
+            switch (mes)
+            {
+                case "Janeiro":
+                    return 1;
+
+                case "Fevereiro":
+                    return 2;
+
+                case "Março":
+                    return 3;
+
+                case "Abril":
+                    return 4;
+
+                case "Maio":
+                    return 5;
+
+                case "Junho":
+                    return 6;
+
+                case "Julho":
+                    return 7;
+
+                case "Agosto":
+                    return 8;
+
+                case "Setembro":
+                    return 9;
+
+                case "Outubro":
+                    return 10;
+
+                case "Novembro":
+                    return 11;
+
+                case "Dezembro":
+                    return 12;
+
+                default:
+                    return 0;
+            }
         }
 
         private string ObterNomeMes(int mes)
@@ -2381,17 +2567,25 @@ namespace COTACAO_INSUMO
             // GRID
             // =========================================================
 
-            DataGridView dgv =
-                CriarGrid();
+            DataGridView dgv =CriarGrid();
 
             dgv.Location =
                 new Point(10, 120);
 
             dgv.Size =
-                new Size(
-                    950,
-                    300
-                );
+                new Size(950, 300);
+
+            // permite rolagem vertical quando houver muitos itens
+            dgv.ScrollBars =
+                ScrollBars.Vertical;
+
+            // mantém as linhas organizadas
+            dgv.AllowUserToResizeRows =
+                false;
+
+            // evita que a tabela aumente automaticamente
+            dgv.AutoSizeRowsMode =
+                DataGridViewAutoSizeRowsMode.None;
 
             // =========================================================
             // COLUNA FORNECEDOR
@@ -3057,10 +3251,11 @@ namespace COTACAO_INSUMO
 
             painelConteudo.Controls.Add(tela);
         }
+
         private void AbrirTabelaCotacao(
-    string empresa,
-    int mes,
-    int ano)
+      string empresa,
+      int mes,
+      int ano)
         {
             string caminhoPlanilha =
                 ObterCaminhoPlanilhaPeriodo(
@@ -3081,85 +3276,202 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            LimparConteudo();
+            painelMenu.Visible = false;
+            painelTopo.Visible = false;
 
-            Panel tela =
-                CriarContainer(800);
+            painelConteudo.Controls.Clear();
+            painelConteudo.AutoScroll = false;
+
+            TableLayoutPanel estrutura =
+                new TableLayoutPanel
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = corFundo,
+                    ColumnCount = 1,
+                    RowCount = 2,
+                    Padding = new Padding(8)
+                };
+
+            estrutura.RowStyles.Add(
+                new RowStyle(
+                    SizeType.Absolute,
+                    82F
+                )
+            );
+
+            estrutura.RowStyles.Add(
+                new RowStyle(
+                    SizeType.Percent,
+                    100F
+                )
+            );
+
+            painelConteudo.Controls.Add(
+                estrutura
+            );
 
             // =========================================================
-            // VOLTAR
+            // BARRA SUPERIOR
             // =========================================================
+
+            Panel barraSuperior =
+                new Panel
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = corFundo
+                };
 
             Button btnVoltar =
                 CriarBotao(
                     "← Voltar",
-                    120,
+                    110,
                     40
                 );
 
             btnVoltar.Location =
-                new Point(10, 10);
+                new Point(
+                    8,
+                    10
+                );
 
-            btnVoltar.Click +=
-                (s, e) =>
-                {
-                    lojaConsultaSelecionada =
-                        empresa;
+            Button btnSalvar =
+                CriarBotaoAzul(
+                    "Salvar alterações",
+                    160,
+                    40
+                );
 
-                    AbrirTelaConsultar();
-                };
-
-            // =========================================================
-            // TÍTULO
-            // =========================================================
+            btnSalvar.Location =
+                new Point(
+                    128,
+                    10
+                );
 
             Label titulo =
-                CriarTitulo(
-                    $"{empresa} - {ObterNomeMes(mes)}/{ano}"
-                );
+                new Label
+                {
+                    Text =
+                        $"{empresa} - {ObterNomeMes(mes)}/{ano}",
 
-            titulo.Location =
-                new Point(150, 13);
+                    AutoSize = true,
 
-            // =========================================================
-            // ARQUIVO
-            // =========================================================
+                    ForeColor =
+                        Color.White,
+
+                    Font =
+                        new Font(
+                            "Segoe UI",
+                            18F,
+                            FontStyle.Bold
+                        ),
+
+                    Location =
+                        new Point(
+                            310,
+                            7
+                        )
+                };
 
             Label lblArquivo =
-                CriarTexto(
-                    Path.GetFileName(caminhoPlanilha)
-                );
+                new Label
+                {
+                    Text =
+                        Path.GetFileName(
+                            caminhoPlanilha
+                        ),
 
-            lblArquivo.Location =
-                new Point(150, 52);
+                    AutoSize = true,
+
+                    ForeColor =
+                        corTextoSecundario,
+
+                    Font =
+                        new Font(
+                            "Segoe UI",
+                            9F
+                        ),
+
+                    Location =
+                        new Point(
+                            312,
+                            43
+                        )
+                };
+
+            Label lblAlteracoes =
+                new Label
+                {
+                    Text = "",
+                    AutoSize = true,
+
+                    ForeColor =
+                        Color.Gold,
+
+                    Font =
+                        new Font(
+                            "Segoe UI",
+                            9F,
+                            FontStyle.Bold
+                        ),
+
+                    Location =
+                        new Point(
+                            700,
+                            25
+                        )
+                };
+
+            barraSuperior.Controls.Add(
+                btnVoltar
+            );
+
+            barraSuperior.Controls.Add(
+                btnSalvar
+            );
+
+            barraSuperior.Controls.Add(
+                titulo
+            );
+
+            barraSuperior.Controls.Add(
+                lblArquivo
+            );
+
+            barraSuperior.Controls.Add(
+                lblAlteracoes
+            );
+
+            estrutura.Controls.Add(
+                barraSuperior,
+                0,
+                0
+            );
 
             // =========================================================
-            // TABELA
+            // GRID
             // =========================================================
 
             DataGridView dgv =
                 new DataGridView
                 {
-                    Location =
-                        new Point(10, 95),
-
-                    Size =
-                        new Size(
-                            Math.Max(
-                                1000,
-                                painelConteudo.ClientSize.Width - 90
-                            ),
-                            570
-                        ),
+                    Dock = DockStyle.Fill,
 
                     BackgroundColor =
-                        Color.FromArgb(18, 18, 18),
+                        Color.FromArgb(
+                            18,
+                            18,
+                            18
+                        ),
 
                     BorderStyle =
-                        BorderStyle.FixedSingle,
+                        BorderStyle.None,
 
                     GridColor =
-                        Color.FromArgb(65, 65, 65),
+                        Color.FromArgb(
+                            55,
+                            55,
+                            55
+                        ),
 
                     RowHeadersVisible =
                         false,
@@ -3171,7 +3483,7 @@ namespace COTACAO_INSUMO
                         false,
 
                     AllowUserToResizeRows =
-                        true,
+                        false,
 
                     AllowUserToResizeColumns =
                         true,
@@ -3185,15 +3497,38 @@ namespace COTACAO_INSUMO
                     EnableHeadersVisualStyles =
                         false,
 
+                    ColumnHeadersVisible =
+                        true,
+
+                    AutoSizeRowsMode =
+                        DataGridViewAutoSizeRowsMode.None,
+
                     AutoSizeColumnsMode =
                         DataGridViewAutoSizeColumnsMode.None,
 
+                    ScrollBars =
+                        ScrollBars.Both,
+
                     ClipboardCopyMode =
-                        DataGridViewClipboardCopyMode.EnableAlwaysIncludeHeaderText
+                        DataGridViewClipboardCopyMode.EnableAlwaysIncludeHeaderText,
+
+                    ReadOnly =
+                        false,
+
+                    EditMode =
+                        DataGridViewEditMode.EditOnKeystrokeOrF2
                 };
 
+            // =========================================================
+            // CABEÇALHO
+            // =========================================================
+
             dgv.ColumnHeadersDefaultCellStyle.BackColor =
-                Color.FromArgb(12, 85, 145);
+                Color.FromArgb(
+                    12,
+                    90,
+                    155
+                );
 
             dgv.ColumnHeadersDefaultCellStyle.ForeColor =
                 Color.White;
@@ -3201,30 +3536,330 @@ namespace COTACAO_INSUMO
             dgv.ColumnHeadersDefaultCellStyle.Font =
                 new Font(
                     "Segoe UI",
-                    9.5F,
+                    8.5F,
                     FontStyle.Bold
                 );
 
+            dgv.ColumnHeadersDefaultCellStyle.WrapMode =
+                DataGridViewTriState.True;
+
+            dgv.ColumnHeadersDefaultCellStyle.Alignment =
+                DataGridViewContentAlignment.MiddleCenter;
+
+            dgv.ColumnHeadersDefaultCellStyle.Padding =
+                new Padding(
+                    2,
+                    3,
+                    2,
+                    3
+                );
+
+            dgv.ColumnHeadersHeight =
+                65;
+
+            dgv.ColumnHeadersHeightSizeMode =
+                DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+
+            // =========================================================
+            // CÉLULAS
+            // =========================================================
+
             dgv.DefaultCellStyle.BackColor =
-                Color.FromArgb(24, 24, 24);
+                Color.FromArgb(
+                    24,
+                    24,
+                    24
+                );
 
             dgv.DefaultCellStyle.ForeColor =
                 Color.White;
 
             dgv.DefaultCellStyle.SelectionBackColor =
-                Color.FromArgb(45, 90, 130);
+                Color.FromArgb(
+                    45,
+                    90,
+                    130
+                );
 
             dgv.DefaultCellStyle.SelectionForeColor =
                 Color.White;
 
-            dgv.ColumnHeadersHeight =
-                36;
+            dgv.DefaultCellStyle.Font =
+                new Font(
+                    "Segoe UI",
+                    8.5F
+                );
+
+            dgv.DefaultCellStyle.WrapMode =
+                DataGridViewTriState.False;
 
             dgv.RowTemplate.Height =
-                30;
+                28;
 
             // =========================================================
-            // LER EXCEL
+            // CONTROLE DE ALTERAÇÕES
+            // =========================================================
+
+            bool temAlteracoes = false;
+
+            void MarcarAlteracao()
+            {
+                temAlteracoes = true;
+
+                lblAlteracoes.Text =
+                    "● Alterações não salvas";
+            }
+
+            dgv.CellValueChanged +=
+                (s, e) =>
+                {
+                    MarcarAlteracao();
+                };
+
+            dgv.CurrentCellDirtyStateChanged +=
+                (s, e) =>
+                {
+                    if (dgv.IsCurrentCellDirty)
+                    {
+                        dgv.CommitEdit(
+                            DataGridViewDataErrorContexts.Commit
+                        );
+                    }
+                };
+
+            // =========================================================
+            // MENU DE CORES
+            // =========================================================
+
+            ContextMenuStrip menuContexto =
+                new ContextMenuStrip();
+
+            ToolStripMenuItem menuPintar =
+                new ToolStripMenuItem(
+                    "Pintar"
+                );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Vermelho",
+                Color.Red,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Azul",
+                Color.Blue,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Amarelo",
+                Color.Yellow,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Verde",
+                Color.Green,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Laranja",
+                Color.Orange,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Roxo",
+                Color.Purple,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Ciano",
+                Color.Cyan,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Magenta",
+                Color.Magenta,
+                MarcarAlteracao
+            );
+
+            menuPintar.DropDownItems.Add(
+                new ToolStripSeparator()
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Azul claro",
+                Color.LightBlue,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Verde claro",
+                Color.LightGreen,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Amarelo claro",
+                Color.LightYellow,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Rosa claro",
+                Color.LightPink,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Cinza",
+                Color.LightGray,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Branco",
+                Color.White,
+                MarcarAlteracao
+            );
+
+            AdicionarCorMenu(
+                menuPintar,
+                dgv,
+                "Preto",
+                Color.Black,
+                MarcarAlteracao
+            );
+
+            ToolStripMenuItem menuRemoverCor =
+                new ToolStripMenuItem(
+                    "Remover cor"
+                );
+
+            menuRemoverCor.Click +=
+                (s, e) =>
+                {
+                    RemoverCorSelecaoGrid(
+                        dgv
+                    );
+
+                    MarcarAlteracao();
+                };
+
+            menuContexto.Items.Add(
+                menuPintar
+            );
+
+            menuContexto.Items.Add(
+                new ToolStripSeparator()
+            );
+
+            menuContexto.Items.Add(
+                menuRemoverCor
+            );
+
+            dgv.ContextMenuStrip =
+                menuContexto;
+
+            // =========================================================
+            // CLIQUE DIREITO
+            // =========================================================
+
+            dgv.CellMouseDown +=
+                (s, e) =>
+                {
+                    if (
+                        e.Button !=
+                        MouseButtons.Right
+                    )
+                        return;
+
+                    if (
+                        e.RowIndex < 0 ||
+                        e.ColumnIndex < 0
+                    )
+                        return;
+
+                    DataGridViewCell celula =
+                        dgv.Rows[
+                            e.RowIndex
+                        ]
+                        .Cells[
+                            e.ColumnIndex
+                        ];
+
+                    if (!celula.Selected)
+                    {
+                        dgv.ClearSelection();
+
+                        celula.Selected =
+                            true;
+
+                        dgv.CurrentCell =
+                            celula;
+                    }
+                };
+
+            // =========================================================
+            // DELETE APAGA CONTEÚDO
+            // =========================================================
+
+            dgv.KeyDown +=
+                (s, e) =>
+                {
+                    if (
+                        e.KeyCode ==
+                        Keys.Delete
+                    )
+                    {
+                        foreach (
+                            DataGridViewCell celula
+                            in dgv.SelectedCells
+                        )
+                        {
+                            celula.Value = "";
+                        }
+
+                        MarcarAlteracao();
+
+                        e.Handled = true;
+                    }
+                };
+
+            // =========================================================
+            // CARREGAR EXCEL
             // =========================================================
 
             try
@@ -3234,13 +3869,13 @@ namespace COTACAO_INSUMO
                         caminhoPlanilha
                     );
 
-                IXLWorksheet planilha =
+                IXLWorksheet worksheet =
                     workbook.Worksheets.First();
 
-                IXLRange? areaUsada =
-                    planilha.RangeUsed();
+                IXLRange? range =
+                    worksheet.RangeUsed();
 
-                if (areaUsada == null)
+                if (range == null)
                 {
                     MessageBox.Show(
                         "A planilha está vazia.",
@@ -3249,19 +3884,62 @@ namespace COTACAO_INSUMO
                         MessageBoxIcon.Information
                     );
 
+                    painelMenu.Visible = true;
+                    painelTopo.Visible = true;
+
                     return;
                 }
 
                 int ultimaLinha =
-                    areaUsada.LastRow()
+                    range
+                        .LastRow()
                         .RowNumber();
 
                 int ultimaColuna =
-                    areaUsada.LastColumn()
+                    range
+                        .LastColumn()
                         .ColumnNumber();
 
+                int larguraDisponivel =
+                    Math.Max(
+                        1000,
+                        painelConteudo.ClientSize.Width - 25
+                    );
+
+                int larguraInsumo = 260;
+                int larguraFornecedorAnterior = 130;
+                int larguraQuantidade = 125;
+                int larguraMaisBarato = 150;
+
+                int quantidadeFornecedores =
+                    Math.Max(
+                        1,
+                        ultimaColuna - 4
+                    );
+
+                int larguraReservada =
+                    larguraInsumo +
+                    larguraFornecedorAnterior +
+                    larguraQuantidade +
+                    larguraMaisBarato;
+
+                int larguraRestante =
+                    larguraDisponivel -
+                    larguraReservada -
+                    20;
+
+                int larguraFornecedor =
+                    larguraRestante /
+                    quantidadeFornecedores;
+
+                if (larguraFornecedor < 72)
+                    larguraFornecedor = 72;
+
+                if (larguraFornecedor > 115)
+                    larguraFornecedor = 115;
+
                 // =====================================================
-                // CABEÇALHOS
+                // COLUNAS
                 // =====================================================
 
                 for (
@@ -3270,15 +3948,40 @@ namespace COTACAO_INSUMO
                     coluna++
                 )
                 {
-                    string nomeColuna =
-                        planilha.Cell(1, coluna)
+                    string cabecalho =
+                        worksheet
+                            .Cell(
+                                1,
+                                coluna
+                            )
                             .GetFormattedString();
 
-                    if (string.IsNullOrWhiteSpace(nomeColuna))
+                    if (
+                        string.IsNullOrWhiteSpace(
+                            cabecalho
+                        )
+                    )
                     {
-                        nomeColuna =
+                        cabecalho =
                             $"Coluna {coluna}";
                     }
+
+                    int larguraColuna;
+
+                    if (coluna == 1)
+                        larguraColuna = larguraInsumo;
+
+                    else if (coluna == 2)
+                        larguraColuna = larguraFornecedorAnterior;
+
+                    else if (coluna == 3)
+                        larguraColuna = larguraQuantidade;
+
+                    else if (coluna == 4)
+                        larguraColuna = larguraMaisBarato;
+
+                    else
+                        larguraColuna = larguraFornecedor;
 
                     DataGridViewTextBoxColumn colunaGrid =
                         new DataGridViewTextBoxColumn
@@ -3287,20 +3990,43 @@ namespace COTACAO_INSUMO
                                 $"COL_{coluna}",
 
                             HeaderText =
-                                nomeColuna,
-
-                            SortMode =
-                                DataGridViewColumnSortMode.NotSortable,
-
-                            MinimumWidth =
-                                90,
+                                cabecalho,
 
                             Width =
-                                CalcularLarguraColuna(
-                                    planilha,
-                                    coluna
-                                )
+                                larguraColuna,
+
+                            MinimumWidth =
+                                60,
+
+                            AutoSizeMode =
+                                DataGridViewAutoSizeColumnMode.None,
+
+                            SortMode =
+                                DataGridViewColumnSortMode.NotSortable
                         };
+
+                    colunaGrid.HeaderCell.Style.WrapMode =
+                        DataGridViewTriState.True;
+
+                    colunaGrid.HeaderCell.Style.Alignment =
+                        DataGridViewContentAlignment.MiddleCenter;
+
+                    colunaGrid.HeaderCell.Style.BackColor =
+                        Color.FromArgb(
+                            12,
+                            90,
+                            155
+                        );
+
+                    colunaGrid.HeaderCell.Style.ForeColor =
+                        Color.White;
+
+                    colunaGrid.HeaderCell.Style.Font =
+                        new Font(
+                            "Segoe UI",
+                            8.5F,
+                            FontStyle.Bold
+                        );
 
                     dgv.Columns.Add(
                         colunaGrid
@@ -3318,32 +4044,9 @@ namespace COTACAO_INSUMO
                 )
                 {
                     object[] valores =
-                        new object[ultimaColuna];
-
-                    for (
-                        int coluna = 1;
-                        coluna <= ultimaColuna;
-                        coluna++
-                    )
-                    {
-                        IXLCell celula =
-                            planilha.Cell(
-                                linha,
-                                coluna
-                            );
-
-                        valores[coluna - 1] =
-                            celula.GetFormattedString();
-                    }
-
-                    int indiceLinha =
-                        dgv.Rows.Add(
-                            valores
-                        );
-
-                    // ================================================
-                    // COPIAR ALGUNS ESTILOS DO EXCEL
-                    // ================================================
+                        new object[
+                            ultimaColuna
+                        ];
 
                     for (
                         int coluna = 1;
@@ -3352,27 +4055,48 @@ namespace COTACAO_INSUMO
                     )
                     {
                         IXLCell celulaExcel =
-                            planilha.Cell(
+                            worksheet.Cell(
+                                linha,
+                                coluna
+                            );
+
+                        valores[
+                            coluna - 1
+                        ] =
+                            celulaExcel
+                                .GetFormattedString();
+                    }
+
+                    int indiceLinha =
+                        dgv.Rows.Add(
+                            valores
+                        );
+
+                    for (
+                        int coluna = 1;
+                        coluna <= ultimaColuna;
+                        coluna++
+                    )
+                    {
+                        IXLCell celulaExcel =
+                            worksheet.Cell(
                                 linha,
                                 coluna
                             );
 
                         DataGridViewCell celulaGrid =
-                            dgv.Rows[indiceLinha]
-                                .Cells[coluna - 1];
-
-                        if (celulaExcel.Style.Font.Bold)
-                        {
-                            celulaGrid.Style.Font =
-                                new Font(
-                                    "Segoe UI",
-                                    9F,
-                                    FontStyle.Bold
-                                );
-                        }
+                            dgv.Rows[
+                                indiceLinha
+                            ]
+                            .Cells[
+                                coluna - 1
+                            ];
 
                         switch (
-                            celulaExcel.Style.Alignment.Horizontal
+                            celulaExcel
+                                .Style
+                                .Alignment
+                                .Horizontal
                         )
                         {
                             case XLAlignmentHorizontalValues.Center:
@@ -3396,11 +4120,80 @@ namespace COTACAO_INSUMO
 
                                 break;
                         }
+
+                        if (
+                            celulaExcel
+                                .Style
+                                .Font
+                                .Bold
+                        )
+                        {
+                            celulaGrid.Style.Font =
+                                new Font(
+                                    "Segoe UI",
+                                    8.5F,
+                                    FontStyle.Bold
+                                );
+                        }
+
+                        // =================================================
+                        // COR ORIGINAL DO EXCEL
+                        // =================================================
+
+                        try
+                        {
+                            XLColor corExcel =
+                                celulaExcel
+                                    .Style
+                                    .Fill
+                                    .BackgroundColor;
+
+                            if (
+                                corExcel.ColorType ==
+                                XLColorType.Color
+                            )
+                            {
+                                Color cor =
+                                    corExcel.Color;
+
+                                if (
+                                    cor.A > 0 &&
+                                    cor != Color.Black
+                                )
+                                {
+                                    celulaGrid.Style.BackColor =
+                                        cor;
+
+                                    celulaGrid.Style.ForeColor =
+                                        ObterCorTexto(
+                                            cor
+                                        );
+                                }
+                            }
+                        }
+                        catch
+                        {
+                        }
                     }
                 }
+
+                dgv.ColumnHeadersVisible =
+                    true;
+
+                dgv.ColumnHeadersHeight =
+                    65;
+
+                dgv.Refresh();
+
+                // limpa indicador porque acabou de carregar
+                temAlteracoes = false;
+                lblAlteracoes.Text = "";
             }
             catch (Exception ex)
             {
+                painelMenu.Visible = true;
+                painelTopo.Visible = true;
+
                 MessageBox.Show(
                     "Não foi possível abrir a planilha.\n\n" +
                     ex.Message,
@@ -3413,42 +4206,429 @@ namespace COTACAO_INSUMO
             }
 
             // =========================================================
-            // RODAPÉ
+            // SALVAR
             // =========================================================
 
-            Label lblInfo =
-                CriarTexto(
-                    "Esta tabela representa a planilha da cotação já preenchida com os valores encontrados nos PDFs."
-                );
+            btnSalvar.Click +=
+                (s, e) =>
+                {
+                    dgv.EndEdit();
 
-            lblInfo.Location =
-                new Point(10, 685);
+                    bool salvo =
+                        SalvarTabelaNoExcel(
+                            dgv,
+                            caminhoPlanilha
+                        );
 
-            tela.Controls.Add(
-                btnVoltar
-            );
+                    if (salvo)
+                    {
+                        temAlteracoes = false;
+                        lblAlteracoes.Text = "";
+                    }
+                };
 
-            tela.Controls.Add(
-                titulo
-            );
+            // =========================================================
+            // VOLTAR
+            // =========================================================
 
-            tela.Controls.Add(
-                lblArquivo
-            );
+            btnVoltar.Click +=
+                (s, e) =>
+                {
+                    if (temAlteracoes)
+                    {
+                        DialogResult resposta =
+                            MessageBox.Show(
+                                "Existem alterações que ainda não foram salvas.\n\n" +
+                                "Deseja salvar antes de voltar?",
+                                "Alterações não salvas",
+                                MessageBoxButtons.YesNoCancel,
+                                MessageBoxIcon.Question
+                            );
 
-            tela.Controls.Add(
-                dgv
-            );
+                        if (
+                            resposta ==
+                            DialogResult.Cancel
+                        )
+                        {
+                            return;
+                        }
 
-            tela.Controls.Add(
-                lblInfo
-            );
+                        if (
+                            resposta ==
+                            DialogResult.Yes
+                        )
+                        {
+                            dgv.EndEdit();
 
-            painelConteudo.Controls.Add(
-                tela
+                            bool salvo =
+                                SalvarTabelaNoExcel(
+                                    dgv,
+                                    caminhoPlanilha
+                                );
+
+                            if (!salvo)
+                                return;
+                        }
+                    }
+
+                    painelMenu.Visible = true;
+                    painelTopo.Visible = true;
+
+                    painelConteudo.AutoScroll = true;
+
+                    lojaConsultaSelecionada =
+                        empresa;
+
+                    AbrirTelaConsultar();
+                };
+
+            estrutura.Controls.Add(
+                dgv,
+                0,
+                1
             );
         }
 
+        private void AdicionarCorMenu(
+    ToolStripMenuItem menuPai,
+    DataGridView dgv,
+    string nome,
+    Color cor,
+    Action aoAlterar)
+        {
+            ToolStripMenuItem item =
+                new ToolStripMenuItem();
+
+            item.Text =
+                nome;
+
+            item.Tag =
+                cor;
+
+            Bitmap imagem =
+                new Bitmap(
+                    18,
+                    18
+                );
+
+            using (
+                Graphics g =
+                    Graphics.FromImage(
+                        imagem
+                    )
+            )
+            {
+                g.Clear(cor);
+
+                g.DrawRectangle(
+                    Pens.Gray,
+                    0,
+                    0,
+                    17,
+                    17
+                );
+            }
+
+            item.Image =
+                imagem;
+
+            item.Click +=
+                (s, e) =>
+                {
+                    if (
+                        s is not ToolStripMenuItem itemClicado
+                    )
+                        return;
+
+                    if (
+                        itemClicado.Tag
+                        is not Color corSelecionada
+                    )
+                        return;
+
+                    PintarSelecaoGrid(
+                        dgv,
+                        corSelecionada
+                    );
+
+                    aoAlterar();
+                };
+
+            menuPai.DropDownItems.Add(
+                item
+            );
+        }
+
+        private void PintarSelecaoGrid(
+     DataGridView dgv,
+     Color cor)
+        {
+            foreach (
+                DataGridViewCell celula
+                in dgv.SelectedCells
+            )
+            {
+                celula.Style.BackColor =
+                    cor;
+
+                celula.Style.ForeColor =
+                    ObterCorTexto(
+                        cor
+                    );
+            }
+
+            dgv.Refresh();
+        }
+
+        private void RemoverCorSelecaoGrid(
+    DataGridView dgv)
+        {
+            Color fundoPadrao =
+                Color.FromArgb(
+                    24,
+                    24,
+                    24
+                );
+
+            foreach (
+                DataGridViewCell celula
+                in dgv.SelectedCells
+            )
+            {
+                celula.Style.BackColor =
+                    fundoPadrao;
+
+                celula.Style.ForeColor =
+                    Color.White;
+            }
+
+            dgv.Refresh();
+        }
+
+        private Color ObterCorTexto(
+     Color fundo)
+        {
+            double brilho =
+                (
+                    fundo.R * 299 +
+                    fundo.G * 587 +
+                    fundo.B * 114
+                ) / 1000.0;
+
+            if (brilho > 150)
+                return Color.Black;
+
+            return Color.White;
+        }
+
+        private bool SalvarTabelaNoExcel(
+    DataGridView dgv,
+    string caminhoPlanilha)
+{
+    try
+    {
+        using XLWorkbook workbook =
+            new XLWorkbook(
+                caminhoPlanilha
+            );
+
+        IXLWorksheet worksheet =
+            workbook.Worksheets.First();
+
+        // =====================================================
+        // CABEÇALHOS
+        // =====================================================
+
+        for (
+            int coluna = 0;
+            coluna < dgv.Columns.Count;
+            coluna++
+        )
+        {
+            worksheet
+                .Cell(
+                    1,
+                    coluna + 1
+                )
+                .Value =
+                    dgv.Columns[
+                        coluna
+                    ]
+                    .HeaderText;
+        }
+
+        // =====================================================
+        // LINHAS
+        // =====================================================
+
+        for (
+            int linha = 0;
+            linha < dgv.Rows.Count;
+            linha++
+        )
+        {
+            DataGridViewRow linhaGrid =
+                dgv.Rows[linha];
+
+            if (linhaGrid.IsNewRow)
+                continue;
+
+            for (
+                int coluna = 0;
+                coluna < dgv.Columns.Count;
+                coluna++
+            )
+            {
+                DataGridViewCell celulaGrid =
+                    linhaGrid.Cells[
+                        coluna
+                    ];
+
+                IXLCell celulaExcel =
+                    worksheet.Cell(
+                        linha + 2,
+                        coluna + 1
+                    );
+
+                string valor =
+                    celulaGrid.Value?
+                    .ToString()
+                    ?? "";
+
+                celulaExcel.Value =
+                    valor;
+
+                // =================================================
+                // COR
+                // =================================================
+
+                Color cor =
+                    celulaGrid.Style.BackColor;
+
+                Color fundoPadrao =
+                    Color.FromArgb(
+                        24,
+                        24,
+                        24
+                    );
+
+                if (
+                    cor != Color.Empty &&
+                    cor != fundoPadrao
+                )
+                {
+                    celulaExcel
+                        .Style
+                        .Fill
+                        .BackgroundColor =
+                            XLColor.FromColor(
+                                cor
+                            );
+                }
+                else
+                {
+                    celulaExcel
+                        .Style
+                        .Fill
+                        .BackgroundColor =
+                            XLColor.NoColor;
+                }
+            }
+        }
+
+        workbook.Save();
+
+        MessageBox.Show(
+            "Alterações salvas com sucesso.",
+            "Cotação",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information
+        );
+
+        return true;
+    }
+    catch (Exception ex)
+    {
+        MessageBox.Show(
+            "Não foi possível salvar a planilha.\n\n" +
+            ex.Message,
+            "Erro ao salvar",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error
+        );
+
+        return false;
+    }
+}
+
+        private int CalcularLarguraColunaVisualizacao(IXLWorksheet worksheet,int coluna,string cabecalho)
+        {
+            int larguraMinima = 90;
+
+            int larguraMaxima = 280;
+
+            // largura baseada no Excel
+            double larguraExcel =
+                worksheet
+                    .Column(coluna)
+                    .Width;
+
+            int largura =
+                (int)(
+                    larguraExcel * 8
+                );
+
+            // também considera o tamanho do cabeçalho
+            int larguraCabecalho =
+                cabecalho.Length * 8 + 30;
+
+            if (
+                larguraCabecalho >
+                largura
+            )
+            {
+                largura =
+                    larguraCabecalho;
+            }
+
+            if (
+                largura <
+                larguraMinima
+            )
+            {
+                largura =
+                    larguraMinima;
+            }
+
+            if (
+                largura >
+                larguraMaxima
+            )
+            {
+                largura =
+                    larguraMaxima;
+            }
+
+            return largura;
+        }
+        private int CalcularLarguraColuna(IXLWorksheet planilha,int numeroColuna)
+        {
+            double larguraExcel =
+                planilha
+                    .Column(numeroColuna)
+                    .Width;
+
+            int largura =
+                (int)(larguraExcel * 7);
+
+            if (largura < 100)
+                largura = 100;
+
+            if (largura > 300)
+                largura = 300;
+
+            return largura;
+        }
         private void Form1_Load(
             object sender,
             EventArgs e)
