@@ -106,10 +106,12 @@ namespace COTACAO_INSUMO
         {
             // Cálculo feito pelo C#, não pela IA
             ResultadoPreco preco =
-                CalculadoraPreco.Calcular(
-                    item.UnidadeOriginal,
-                    item.ValorUnitario
-                );
+            CalculadoraPreco.Calcular(
+                item.UnidadeOriginal,
+                item.Quantidade,
+                item.ValorTotal,
+                item.ValorUnitario
+            );
 
             item.PrecoNormalizado =
                 preco.PrecoNormalizado;
@@ -212,7 +214,7 @@ namespace COTACAO_INSUMO
             decimal valorArredondado =
                 Math.Round(
                     preco.PrecoNormalizado,
-                    5,
+                    3,
                     MidpointRounding.AwayFromZero
                 );
 
@@ -228,7 +230,7 @@ namespace COTACAO_INSUMO
             celula.Style
                 .NumberFormat
                 .Format =
-                "0.00000";
+                "0.000";
 
             // -------------------------------------------------
             // ATUALIZAR FORNECEDOR MAIS BARATO
@@ -254,7 +256,7 @@ namespace COTACAO_INSUMO
             decimal preco =
                 Math.Round(
                     item.PrecoNormalizado,
-                    5,
+                    3,
                     MidpointRounding.AwayFromZero
                 );
 
@@ -625,42 +627,48 @@ namespace COTACAO_INSUMO
                     .LastColumn()
                     .ColumnNumber();
 
-            int colunaFornecedorMaisBarato =
-                -1;
+            int colunaFornecedorMaisBarato = -1;
+            int colunaQuantidade = -1;
 
-            // =================================================
-            // DESCOBRIR COLUNA
-            // "Fornecedor mais em conta"
-            // =================================================
+            // =========================================================
+            // LOCALIZAR COLUNAS FIXAS
+            // =========================================================
 
             for (
                 int coluna = 1;
                 coluna <= ultimaColuna;
-                coluna++)
+                coluna++
+            )
             {
                 string cabecalho =
-                    planilha
-                        .Cell(
-                            1,
-                            coluna
-                        )
-                        .GetFormattedString()
-                        .Trim();
+                    NormalizarNome(
+                        planilha
+                            .Cell(1, coluna)
+                            .GetFormattedString()
+                    );
 
                 if (
-                    NormalizarNome(
-                        cabecalho
-                    )
-                    ==
-                    NormalizarNome(
-                        "Fornecedor mais em conta"
+                    cabecalho.Contains(
+                        "FORNECEDOR MAIS EM CONTA"
                     )
                 )
                 {
                     colunaFornecedorMaisBarato =
                         coluna;
+                }
 
-                    break;
+                if (
+                    cabecalho.Contains(
+                        "QUANTIDADE A COMPRAR"
+                    )
+                    ||
+                    cabecalho == "QUANTIDADE"
+                    ||
+                    cabecalho == "QTD"
+                )
+                {
+                    colunaQuantidade =
+                        coluna;
                 }
             }
 
@@ -671,74 +679,39 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            decimal? menorPreco =
-                null;
+            // =========================================================
+            // FORNECEDORES COMEÇAM DEPOIS DAS COLUNAS FIXAS
+            // =========================================================
 
-            string fornecedorMaisBarato =
-                "";
+            int primeiraColunaFornecedor =
+                Math.Max(
+                    colunaFornecedorMaisBarato,
+                    colunaQuantidade
+                ) + 1;
 
-            // =================================================
-            // PERCORRER COLUNAS DE FORNECEDORES
-            // =================================================
+            decimal? menorPreco = null;
+
+            string fornecedorMaisBarato = "";
+
+            // =========================================================
+            // VERIFICAR SOMENTE FORNECEDORES
+            // =========================================================
 
             for (
-                int coluna = 1;
+                int coluna = primeiraColunaFornecedor;
                 coluna <= ultimaColuna;
-                coluna++)
+                coluna++
+            )
             {
-                if (
-                    coluna ==
-                    colunaFornecedorMaisBarato
-                )
-                {
-                    continue;
-                }
-
                 string cabecalho =
                     planilha
-                        .Cell(
-                            1,
-                            coluna
-                        )
+                        .Cell(1, coluna)
                         .GetFormattedString()
                         .Trim();
 
                 if (
                     string.IsNullOrWhiteSpace(
                         cabecalho
-                    )
-                )
-                {
-                    continue;
-                }
-
-                // =============================================
-                // IGNORAR COLUNAS QUE NÃO SÃO FORNECEDORES
-                // =============================================
-
-                string headerNormalizado =
-                    NormalizarNome(
-                        cabecalho
-                    );
-
-                if (
-                    headerNormalizado ==
-                    "INSUMO"
-                    ||
-                    headerNormalizado.Contains(
-                        "FORNECEDOR ANTERIOR"
-                    )
-                    ||
-                    headerNormalizado.Contains(
-                        "FORNECEDOR MAIS EM CONTA"
-                    )
-                    ||
-                    headerNormalizado.Contains(
-                        "QUANTIDADE"
-                    )
-                    ||
-                    headerNormalizado.Contains(
-                        "QTD"
                     )
                 )
                 {
@@ -761,8 +734,7 @@ namespace COTACAO_INSUMO
                         continue;
 
                     if (
-                        menorPreco == null
-                        ||
+                        menorPreco == null ||
                         preco < menorPreco.Value
                     )
                     {
@@ -775,24 +747,48 @@ namespace COTACAO_INSUMO
                 }
             }
 
-            // =================================================
-            // ESCREVER FORNECEDOR MAIS BARATO
-            // =================================================
+            IXLCell celulaMaisBarato =
+                planilha.Cell(
+                    linha,
+                    colunaFornecedorMaisBarato
+                );
+
+            // =========================================================
+            // NENHUM PREÇO PREENCHIDO
+            // =========================================================
 
             if (
-                !string.IsNullOrWhiteSpace(
+                menorPreco == null ||
+                string.IsNullOrWhiteSpace(
                     fornecedorMaisBarato
                 )
             )
             {
-                planilha
-                    .Cell(
-                        linha,
-                        colunaFornecedorMaisBarato
-                    )
-                    .Value =
-                    fornecedorMaisBarato;
+                celulaMaisBarato.Clear(
+                    XLClearOptions.Contents
+                );
+
+                celulaMaisBarato
+                    .Style
+                    .Fill
+                    .BackgroundColor =
+                    XLColor.NoColor;
+
+                return;
             }
+
+            // =========================================================
+            // ENCONTROU MENOR PREÇO
+            // =========================================================
+
+            celulaMaisBarato.Value =
+                fornecedorMaisBarato;
+
+            celulaMaisBarato
+                .Style
+                .Fill
+                .BackgroundColor =
+                XLColor.LightGreen;
         }
     }
 }
