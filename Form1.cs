@@ -5,11 +5,58 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using ClosedXML.Excel;
+using OpenAI.Responses;
+using System.Threading.Tasks;
+
+#pragma warning disable OPENAI001
 
 namespace COTACAO_INSUMO
 {
     public partial class Form1 : Form
     {
+        // =========================================================
+        // CONFIGURAÇÃO DA IA
+        // =========================================================
+
+        private string provedorIA =
+            "OpenAI";
+
+        private string modeloIA =
+            "gpt-5.6-sol";
+
+        private string apiKeyIA =
+            "";
+
+        private int timeoutIA = 3600;
+
+        private bool configuracaoIASalva =
+            false;
+
+        private async Task<bool>
+        TestarConexaoOpenAIAsync(
+        string apiKey,
+        string modelo)
+        {
+            ResponsesClient client =
+                new ResponsesClient(
+                    apiKey
+                );
+
+            ResponseResult resposta =
+                await client.CreateResponseAsync(
+                    modelo,
+                    "Responda somente com OK."
+                );
+
+            string texto =
+                resposta.GetOutputText();
+
+            return
+                !string.IsNullOrWhiteSpace(
+                    texto
+                );
+        }
+
         private enum TelaAtual
         {
             Inicio,
@@ -59,11 +106,21 @@ namespace COTACAO_INSUMO
         private class ItemNaoEncontrado
         {
             public string Loja { get; set; } = "";
+
             public int Mes { get; set; }
+
             public int Ano { get; set; }
+
             public string Fornecedor { get; set; } = "";
+
             public string Insumo { get; set; } = "";
+
             public string PrecoPorGrama { get; set; } = "";
+
+            public string TipoPreco { get; set; } = "";
+
+            public string UnidadeOriginal { get; set; } = "";
+
             public string Data { get; set; } = "";
         }
 
@@ -1341,101 +1398,103 @@ namespace COTACAO_INSUMO
                 new Point(665, 635);
 
             processar.Click +=
-                (s, e) =>
-                {
-                    if (
-                        string.IsNullOrWhiteSpace(
-                            lojaSelecionada
-                        )
-                    )
-                    {
-                        MessageBox.Show(
-                            "Selecione Orlando ou Drugstore.",
-                            "Atenção",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning
-                        );
+    async (s, e) =>
+    {
+        // =====================================================
+        // EMPRESA
+        // =====================================================
 
-                        return;
-                    }
+        if (
+            string.IsNullOrWhiteSpace(
+                lojaSelecionada
+            )
+        )
+        {
+            MessageBox.Show(
+                "Selecione Orlando ou Drugstore.",
+                "Atenção",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
 
-                    if (pdfsSelecionados.Count == 0)
-                    {
-                        MessageBox.Show(
-                            "Selecione pelo menos um PDF de fornecedor.",
-                            "Atenção",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning
-                        );
+            return;
+        }
 
-                        return;
-                    }
+        // =====================================================
+        // PDF
+        // =====================================================
 
-                    bool cotacaoJaExiste =
-                        PeriodoExiste(
-                            lojaSelecionada,
-                            mesSelecionado,
-                            anoSelecionado
-                        );
+        if (
+            pdfsSelecionados.Count == 0
+        )
+        {
+            MessageBox.Show(
+                "Selecione pelo menos um PDF de fornecedor.",
+                "Atenção",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
 
-                    // ---------------------------------------------
-                    // NOVA COTAÇÃO
-                    // ---------------------------------------------
+            return;
+        }
 
-                    if (
-                        !cotacaoJaExiste &&
-                        string.IsNullOrWhiteSpace(
-                            caminhoExcelSelecionado
-                        )
-                    )
-                    {
-                        MessageBox.Show(
-                            "Esta é uma nova cotação.\n\n" +
-                            "Selecione a planilha Excel-base antes de processar.",
-                            "Planilha necessária",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning
-                        );
+        // =====================================================
+        // CONFIGURAÇÃO DA IA
+        // =====================================================
 
-                        return;
-                    }
+        if (
+            !configuracaoIASalva ||
+            string.IsNullOrWhiteSpace(
+                apiKeyIA
+            )
+        )
+        {
+            MessageBox.Show(
+                "Configure a OpenAI antes de processar a cotação.\n\n" +
+                "Acesse Configurações > Agente de IA.",
+                "IA não configurada",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
 
-                    // ---------------------------------------------
-                    // COTAÇÃO EXISTENTE
-                    // ---------------------------------------------
+            return;
+        }
 
-                    if (
-                        cotacaoJaExiste &&
-                        !string.IsNullOrWhiteSpace(
-                            caminhoExcelSelecionado
-                        )
-                    )
-                    {
-                        DialogResult resposta =
-                            MessageBox.Show(
-                                "Já existe uma cotação para este mês e ano.\n\n" +
-                                "O sistema pode complementar a planilha já existente sem importar outro Excel.\n\n" +
-                                "Deseja utilizar a planilha existente?",
-                                "Cotação existente",
-                                MessageBoxButtons.YesNo,
-                                MessageBoxIcon.Question
-                            );
+        bool cotacaoExiste =
+            PlanilhaPeriodoExiste(
+                lojaSelecionada,
+                mesSelecionado,
+                anoSelecionado
+            );
 
-                        if (
-                            resposta ==
-                            DialogResult.Yes
-                        )
-                        {
-                            caminhoExcelSelecionado = "";
-                        }
-                        else
-                        {
-                            return;
-                        }
-                    }
+        // =====================================================
+        // NOVA COTAÇÃO PRECISA DO EXCEL
+        // =====================================================
 
-                    AbrirTelaProcessando();
-                };
+        if (
+            !cotacaoExiste &&
+            string.IsNullOrWhiteSpace(
+                caminhoExcelSelecionado
+            )
+        )
+        {
+            MessageBox.Show(
+                "Esta é uma nova cotação.\n\n" +
+                "Selecione a planilha Excel-base.",
+                "Planilha necessária",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // PROCESSAR
+        // =====================================================
+
+        await ProcessarCotacaoComIAAsync();
+    };
 
             tela.Controls.Add(titulo);
             tela.Controls.Add(cardLoja);
@@ -1449,150 +1508,6 @@ namespace COTACAO_INSUMO
         // =========================================================
         // PROCESSANDO
         // =========================================================
-
-        private void AbrirTelaProcessando()
-        {
-            telaAtual =
-                TelaAtual.Processando;
-
-            LimparConteudo();
-
-            Panel tela =
-                CriarContainer(600);
-
-            Label titulo =
-                CriarTitulo(
-                    "Processando cotações..."
-                );
-
-            titulo.Location =
-                new Point(10, 10);
-
-            Label descricao =
-                CriarTexto(
-                    "Aguarde enquanto os PDFs são analisados e a cotação é preenchida."
-                );
-
-            descricao.Location =
-                new Point(10, 48);
-
-            ProgressBar barra =
-                new ProgressBar
-                {
-                    Location =
-                        new Point(10, 85),
-
-                    Width = 800,
-                    Height = 18,
-                    Value = 70
-                };
-
-            Panel card =
-                CriarCard(800, 190);
-
-            card.Location =
-                new Point(10, 125);
-
-            Label texto =
-                CriarTexto(
-                    "✓ Lendo os PDFs dos fornecedores...\n\n" +
-                    "✓ Identificando fornecedores...\n\n" +
-                    "✓ Comparando os insumos...\n\n" +
-                    "◌ Calculando o preço por grama...\n\n" +
-                    "◌ Preenchendo a planilha..."
-                );
-
-            texto.Location =
-                new Point(20, 20);
-
-            card.Controls.Add(texto);
-
-            Button cancelar =
-                CriarBotao(
-                    "Cancelar",
-                    130,
-                    42
-                );
-
-            cancelar.Location =
-                new Point(680, 345);
-
-            cancelar.ForeColor =
-                Color.LightCoral;
-
-            cancelar.Click +=
-                (s, e) =>
-                    AbrirTelaNovaCotacao();
-
-            tela.Controls.Add(titulo);
-            tela.Controls.Add(descricao);
-            tela.Controls.Add(barra);
-            tela.Controls.Add(card);
-            tela.Controls.Add(cancelar);
-
-            painelConteudo.Controls.Add(tela);
-
-            System.Windows.Forms.Timer timer =
-                new System.Windows.Forms.Timer
-                {
-                    Interval = 1500
-                };
-
-            timer.Tick +=
-                (s, e) =>
-                {
-                    timer.Stop();
-                    timer.Dispose();
-
-                    bool periodoJaExistia =
-                        PeriodoExiste(
-                            lojaSelecionada,
-                            mesSelecionado,
-                            anoSelecionado
-                        );
-
-                    CriarEstruturaPeriodo();
-
-                    // =================================================
-                    // NÚMEROS TEMPORÁRIOS
-                    // =================================================
-                    // Depois serão substituídos pelo resultado
-                    // real do processamento com IA.
-
-                    ultimoTotalInsumosNaoEncontrados =
-                        itensNaoEncontrados.Count(
-                            x =>
-                                x.Loja ==
-                                    lojaSelecionada &&
-                                x.Mes ==
-                                    mesSelecionado &&
-                                x.Ano ==
-                                    anoSelecionado
-                        );
-
-                    ultimoTotalInsumosPreenchidos = 0;
-
-                    // =================================================
-                    // SE FOR NOVA, CRIA A PLANILHA DO PERÍODO
-                    // =================================================
-
-                    if (!periodoJaExistia)
-                    {
-                        CriarArquivoPlanilhaPeriodo();
-                    }
-
-                    AbrirTelaConcluido();
-
-                    // =================================================
-                    // LIMPAR ARQUIVOS UTILIZADOS
-                    // =================================================
-
-                    pdfsSelecionados.Clear();
-                    caminhoExcelSelecionado = "";
-                };
-
-            timer.Start();
-        }
 
         private void CriarEstruturaPeriodo()
         {
@@ -2460,32 +2375,29 @@ namespace COTACAO_INSUMO
             LimparConteudo();
             DestacarMenu(btnNaoEncontrados);
 
-            Panel tela = CriarContainer(700);
+            Panel tela = CriarContainer(760);
+
+            Label titulo = CriarTitulo("Insumos não encontrados");
+            titulo.Location = new Point(10, 5);
+
+            Label subtitulo = CriarTexto(
+                "Consulte os insumos que não foram localizados automaticamente na planilha."
+            );
+
+            subtitulo.Location = new Point(10, 45);
 
             // =========================================================
-            // TÍTULO
+            // FILTROS
             // =========================================================
 
-            Label titulo =
-                CriarTitulo(
-                    "Insumos não encontrados"
-                );
+            Label lblEmpresa = CriarLabelSecao("Empresa");
+            lblEmpresa.Location = new Point(10, 95);
 
-            titulo.Location =
-                new Point(10, 5);
+            ComboBox cmbEmpresa = CriarCombo(220);
+            cmbEmpresa.Location = new Point(10, 125);
 
-            // =========================================================
-            // LOJA
-            // =========================================================
-
-            ComboBox cmbLoja =
-                CriarCombo(150);
-
-            cmbLoja.Location =
-                new Point(10, 65);
-
-            cmbLoja.Items.AddRange(
-                new string[]
+            cmbEmpresa.Items.AddRange(
+                new object[]
                 {
             "Orlando",
             "Drugstore"
@@ -2493,102 +2405,101 @@ namespace COTACAO_INSUMO
             );
 
             if (
-                lojaConsultaSelecionada == "Drugstore"
+                !string.IsNullOrWhiteSpace(lojaConsultaSelecionada) &&
+                cmbEmpresa.Items.Contains(lojaConsultaSelecionada)
             )
             {
-                cmbLoja.SelectedItem =
-                    "Drugstore";
+                cmbEmpresa.SelectedItem =
+                    lojaConsultaSelecionada;
             }
             else
             {
-                cmbLoja.SelectedItem =
-                    "Orlando";
+                cmbEmpresa.SelectedIndex = 0;
             }
 
-            // =========================================================
-            // MÊS
-            // =========================================================
+            Label lblMes = CriarLabelSecao("Mês");
+            lblMes.Location = new Point(250, 95);
 
-            ComboBox cmbMes =
-                CriarCombo(200);
+            ComboBox cmbMes = CriarCombo(180);
+            cmbMes.Location = new Point(250, 125);
 
-            cmbMes.Location =
-                new Point(175, 65);
-
-            cmbMes.Items.AddRange(
-                new string[]
-                {
-            "Janeiro",
-            "Fevereiro",
-            "Março",
-            "Abril",
-            "Maio",
-            "Junho",
-            "Julho",
-            "Agosto",
-            "Setembro",
-            "Outubro",
-            "Novembro",
-            "Dezembro"
-                }
-            );
+            for (int i = 1; i <= 12; i++)
+            {
+                cmbMes.Items.Add(
+                    ObterNomeMes(i)
+                );
+            }
 
             cmbMes.SelectedIndex =
-                DateTime.Now.Month - 1;
-
-            // =========================================================
-            // ANO
-            // =========================================================
-
-            NumericUpDown numAno =
-                CriarAno(90);
-
-            numAno.Location =
-                new Point(390, 65);
-
-            numAno.Value =
-                DateTime.Now.Year;
-
-            // =========================================================
-            // BOTÃO PESQUISAR
-            // =========================================================
-
-            Button pesquisar =
-                CriarBotao(
-                    "Pesquisar",
-                    120,
-                    38
+                Math.Max(
+                    0,
+                    Math.Min(
+                        mesSelecionado - 1,
+                        11
+                    )
                 );
 
-            pesquisar.Location =
-                new Point(495, 65);
+            Label lblAno = CriarLabelSecao("Ano");
+            lblAno.Location = new Point(450, 95);
+
+            NumericUpDown numAno =
+                CriarAno(120);
+
+            numAno.Location =
+                new Point(450, 125);
+
+            numAno.Value =
+                anoSelecionado;
+
+            Button btnBuscar =
+                CriarBotaoAzul(
+                    "Buscar",
+                    120,
+                    36
+                );
+
+            btnBuscar.Location =
+                new Point(610, 123);
 
             // =========================================================
             // GRID
             // =========================================================
 
-            DataGridView dgv =CriarGrid();
+            DataGridView dgv =
+                CriarGrid();
 
             dgv.Location =
-                new Point(10, 120);
+                new Point(10, 190);
 
-            dgv.Size =
-                new Size(950, 300);
+            dgv.Width =
+                870;
 
-            // permite rolagem vertical quando houver muitos itens
+            dgv.Height =
+                430;
+
+            dgv.AllowUserToAddRows =
+                false;
+
+            dgv.AllowUserToDeleteRows =
+                false;
+
+            dgv.ReadOnly =
+                false;
+
+            dgv.SelectionMode =
+                DataGridViewSelectionMode.FullRowSelect;
+
+            dgv.MultiSelect =
+                true;
+
             dgv.ScrollBars =
                 ScrollBars.Vertical;
 
-            // mantém as linhas organizadas
-            dgv.AllowUserToResizeRows =
-                false;
-
-            // evita que a tabela aumente automaticamente
-            dgv.AutoSizeRowsMode =
-                DataGridViewAutoSizeRowsMode.None;
+            dgv.AutoSizeColumnsMode =
+                DataGridViewAutoSizeColumnsMode.None;
 
             // =========================================================
-            // COLUNA FORNECEDOR
+            // COLUNAS
             // =========================================================
 
             dgv.Columns.Add(
@@ -2596,36 +2507,40 @@ namespace COTACAO_INSUMO
                 "Fornecedor"
             );
 
-            // =========================================================
-            // COLUNA INSUMO
-            // =========================================================
+            dgv.Columns["Fornecedor"].Width =
+                170;
 
             dgv.Columns.Add(
                 "Insumo",
                 "Insumo"
             );
 
-            // =========================================================
-            // COLUNA PREÇO
-            // =========================================================
+            dgv.Columns["Insumo"].Width =
+                300;
 
             dgv.Columns.Add(
                 "Preco",
-                "Preço por grama"
+                "Preço normalizado"
             );
 
-            // =========================================================
-            // COLUNA DATA
-            // =========================================================
+            dgv.Columns["Preco"].Width =
+                150;
+
+            dgv.Columns.Add(
+                "Tipo",
+                "Tipo"
+            );
+
+            dgv.Columns["Tipo"].Width =
+                110;
 
             dgv.Columns.Add(
                 "Data",
                 "Data"
             );
 
-            // =========================================================
-            // CHECKBOX POR ÚLTIMO
-            // =========================================================
+            dgv.Columns["Data"].Width =
+                90;
 
             DataGridViewCheckBoxColumn colunaSelecionar =
                 new DataGridViewCheckBoxColumn
@@ -2643,68 +2558,84 @@ namespace COTACAO_INSUMO
                         38,
 
                     AutoSizeMode =
-                        DataGridViewAutoSizeColumnMode.None,
-
-                    FlatStyle =
-                        FlatStyle.Standard
+                        DataGridViewAutoSizeColumnMode.None
                 };
 
             dgv.Columns.Add(
                 colunaSelecionar
             );
 
+            // Somente checkbox editável
+            foreach (
+                DataGridViewColumn coluna
+                in dgv.Columns
+            )
+            {
+                coluna.ReadOnly =
+                    coluna.Name != "Selecionar";
+            }
+
+            Button btnSelecionarTudo =
+    CriarBotao(
+        "Selecionar tudo",
+        130,
+        38
+    );
+
+            btnSelecionarTudo.Location =
+                new Point(555, 640);
+
+            bool todosSelecionados =
+                false;
+
+            btnSelecionarTudo.Click +=
+                (s, e) =>
+                {
+                    todosSelecionados =
+                        !todosSelecionados;
+
+                    foreach (
+                        DataGridViewRow linha
+                        in dgv.Rows
+                    )
+                    {
+                        linha
+                            .Cells["Selecionar"]
+                            .Value =
+                            todosSelecionados;
+                    }
+
+                    btnSelecionarTudo.Text =
+                        todosSelecionados
+                            ? "Desmarcar tudo"
+                            : "Selecionar tudo";
+                };
+
             // =========================================================
-            // AJUSTAR TAMANHOS DAS COLUNAS
+            // BOTÃO EXCLUIR
             // =========================================================
 
-            dgv.Columns["Fornecedor"].FillWeight = 24;
-            dgv.Columns["Insumo"].FillWeight = 28;
-            dgv.Columns["Preco"].FillWeight = 22;
-            dgv.Columns["Data"].FillWeight = 12;
-
-            dgv.Columns["Selecionar"].AutoSizeMode =
-                DataGridViewAutoSizeColumnMode.None;
-
-            dgv.Columns["Selecionar"].Width =
-                38;
-
-            // =========================================================
-            // TEXTO DO RESULTADO
-            // =========================================================
-
-            Label resultado =
-                CriarTexto(
-                    "Selecione loja, mês e ano e clique em Pesquisar."
+            Button btnExcluir =
+                CriarBotao(
+                    "Excluir selecionados",
+                    180,
+                    38
                 );
 
-            resultado.Location =
-                new Point(10, 440);
+            btnExcluir.Location =
+                new Point(700, 640);
 
             // =========================================================
-            // MÉTODO LOCAL DE PESQUISA
+            // CARREGAR ITENS
             // =========================================================
 
-            void ExecutarPesquisa()
+            void CarregarItens()
             {
                 dgv.Rows.Clear();
 
-                if (
-                    cmbLoja.SelectedIndex == -1 ||
-                    cmbMes.SelectedIndex == -1
-                )
-                {
-                    resultado.Text =
-                        "Selecione loja e mês.";
-
-                    resultado.ForeColor =
-                        Color.LightCoral;
-
-                    return;
-                }
-
-                string loja =
-                    cmbLoja.SelectedItem?
-                    .ToString()
+                string empresa =
+                    cmbEmpresa.SelectedItem?
+                        .ToString()
                     ?? "";
 
                 int mes =
@@ -2713,110 +2644,77 @@ namespace COTACAO_INSUMO
                 int ano =
                     (int)numAno.Value;
 
-                // Mantém a loja atualmente selecionada
                 lojaConsultaSelecionada =
-                    loja;
+                    empresa;
 
-                List<ItemNaoEncontrado> encontrados =
+                List<ItemNaoEncontrado> filtrados =
                     itensNaoEncontrados
                         .Where(
                             x =>
-                                x.Loja == loja &&
-                                x.Mes == mes &&
+                                x.Loja.Equals(
+                                    empresa,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                                &&
+                                x.Mes == mes
+                                &&
                                 x.Ano == ano
                         )
                         .ToList();
 
                 foreach (
                     ItemNaoEncontrado item
-                    in encontrados
+                    in filtrados
                 )
                 {
                     dgv.Rows.Add(
                         item.Fornecedor,
                         item.Insumo,
                         item.PrecoPorGrama,
+                        item.TipoPreco,
                         item.Data,
                         false
                     );
                 }
-
-                if (
-                    encontrados.Count == 0
-                )
-                {
-                    resultado.Text =
-                        "Nenhum insumo não encontrado para este período.";
-
-                    resultado.ForeColor =
-                        Color.Gray;
-                }
-                else if (
-                    encontrados.Count == 1
-                )
-                {
-                    resultado.Text =
-                        "1 insumo encontrado.";
-
-                    resultado.ForeColor =
-                        Color.White;
-                }
-                else
-                {
-                    resultado.Text =
-                        $"{encontrados.Count} insumos encontrados.";
-
-                    resultado.ForeColor =
-                        Color.White;
-                }
             }
 
             // =========================================================
-            // PESQUISAR
+            // BUSCAR
             // =========================================================
 
-            pesquisar.Click +=
+            btnBuscar.Click +=
                 (s, e) =>
                 {
-                    ExecutarPesquisa();
+                    CarregarItens();
                 };
 
             // =========================================================
-            // BOTÃO EXCLUIR
+            // EXCLUIR
             // =========================================================
 
-            Button excluir =
-                CriarBotao(
-                    "Excluir selecionados",
-                    220,
-                    42
-                );
-
-            excluir.Location =
-                new Point(740, 435);
-
-            excluir.ForeColor =
-                Color.LightCoral;
-
-            excluir.Click +=
+            btnExcluir.Click +=
                 (s, e) =>
                 {
-                    List<DataGridViewRow> linhasMarcadas =
-                        new List<DataGridViewRow>();
+                    List<ItemNaoEncontrado>
+                        itensParaExcluir =
+                        new List<ItemNaoEncontrado>();
 
-                    // Primeiro identifica quais linhas foram marcadas
+                    string empresa =
+                        cmbEmpresa.SelectedItem?
+                            .ToString()
+                        ?? "";
+
+                    int mes =
+                        cmbMes.SelectedIndex + 1;
+
+                    int ano =
+                        (int)numAno.Value;
+
                     foreach (
                         DataGridViewRow linha
                         in dgv.Rows
                     )
                     {
-                        if (
-                            linha.IsNewRow
-                        )
-                        {
-                            continue;
-                        }
-
                         bool marcado =
                             Convert.ToBoolean(
                                 linha
@@ -2825,52 +2723,9 @@ namespace COTACAO_INSUMO
                                 ?? false
                             );
 
-                        if (marcado)
-                        {
-                            linhasMarcadas.Add(
-                                linha
-                            );
-                        }
-                    }
+                        if (!marcado)
+                            continue;
 
-                    // Nenhuma selecionada
-                    if (
-                        linhasMarcadas.Count == 0
-                    )
-                    {
-                        MessageBox.Show(
-                            "Selecione pelo menos um insumo para excluir.",
-                            "Nenhum item selecionado",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information
-                        );
-
-                        return;
-                    }
-
-                    DialogResult confirmacao =
-                        MessageBox.Show(
-                            linhasMarcadas.Count == 1
-                                ? "Deseja excluir o insumo selecionado?"
-                                : $"Deseja excluir os {linhasMarcadas.Count} insumos selecionados?",
-                            "Confirmar exclusão",
-                            MessageBoxButtons.YesNo,
-                            MessageBoxIcon.Warning
-                        );
-
-                    if (
-                        confirmacao !=
-                        DialogResult.Yes
-                    )
-                    {
-                        return;
-                    }
-
-                    foreach (
-                        DataGridViewRow linha
-                        in linhasMarcadas
-                    )
-                    {
                         string fornecedor =
                             linha
                                 .Cells["Fornecedor"]
@@ -2885,308 +2740,1054 @@ namespace COTACAO_INSUMO
                                 .ToString()
                             ?? "";
 
-                        string preco =
-                            linha
-                                .Cells["Preco"]
-                                .Value?
-                                .ToString()
-                            ?? "";
-
-                        string data =
-                            linha
-                                .Cells["Data"]
-                                .Value?
-                                .ToString()
-                            ?? "";
-
-                        ItemNaoEncontrado? item =
+                        ItemNaoEncontrado? encontrado =
                             itensNaoEncontrados
                                 .FirstOrDefault(
                                     x =>
-                                        x.Fornecedor ==
-                                            fornecedor &&
-                                        x.Insumo ==
-                                            insumo &&
-                                        x.PrecoPorGrama ==
-                                            preco &&
-                                        x.Data ==
-                                            data
+                                        x.Loja.Equals(
+                                            empresa,
+                                            StringComparison.OrdinalIgnoreCase
+                                        )
+                                        &&
+                                        x.Mes == mes
+                                        &&
+                                        x.Ano == ano
+                                        &&
+                                        x.Fornecedor.Equals(
+                                            fornecedor,
+                                            StringComparison.OrdinalIgnoreCase
+                                        )
+                                        &&
+                                        x.Insumo.Equals(
+                                            insumo,
+                                            StringComparison.OrdinalIgnoreCase
+                                        )
                                 );
 
-                        if (
-                            item != null
-                        )
+                        if (encontrado != null)
                         {
-                            itensNaoEncontrados.Remove(
-                                item
+                            itensParaExcluir.Add(
+                                encontrado
                             );
                         }
+                    }
 
-                        dgv.Rows.Remove(
-                            linha
+                    if (itensParaExcluir.Count == 0)
+                    {
+                        MessageBox.Show(
+                            "Selecione pelo menos um item para excluir.",
+                            "Atenção",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+
+                        return;
+                    }
+
+                    DialogResult resposta =
+                        MessageBox.Show(
+                            $"Deseja excluir {itensParaExcluir.Count} item(ns) selecionado(s)?",
+                            "Confirmar exclusão",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Question
+                        );
+
+                    if (
+                        resposta !=
+                        DialogResult.Yes
+                    )
+                    {
+                        return;
+                    }
+
+                    foreach (
+                        ItemNaoEncontrado item
+                        in itensParaExcluir
+                    )
+                    {
+                        itensNaoEncontrados.Remove(
+                            item
                         );
                     }
 
-                    // Atualiza quantidade
-                    int quantidadeRestante =
-                        dgv.Rows.Count;
+                    CarregarItens();
+                };
 
+            // =========================================================
+            // EMPRESA
+            // =========================================================
+
+            cmbEmpresa.SelectedIndexChanged +=
+                (s, e) =>
+                {
                     if (
-                        quantidadeRestante == 0
+                        cmbEmpresa.SelectedItem != null
                     )
                     {
-                        resultado.Text =
-                            "Nenhum insumo não encontrado para este período.";
-
-                        resultado.ForeColor =
-                            Color.Gray;
-                    }
-                    else if (
-                        quantidadeRestante == 1
-                    )
-                    {
-                        resultado.Text =
-                            "1 insumo encontrado.";
-
-                        resultado.ForeColor =
-                            Color.White;
-                    }
-                    else
-                    {
-                        resultado.Text =
-                            $"{quantidadeRestante} insumos encontrados.";
-
-                        resultado.ForeColor =
-                            Color.White;
+                        lojaConsultaSelecionada =
+                            cmbEmpresa.SelectedItem
+                                .ToString()
+                            ?? "";
                     }
                 };
 
             // =========================================================
-            // ADICIONAR À TELA
+            // CONTROLES
             // =========================================================
 
+            tela.Controls.Add(titulo);
+            tela.Controls.Add(subtitulo);
+
+            tela.Controls.Add(lblEmpresa);
+            tela.Controls.Add(cmbEmpresa);
+
+            tela.Controls.Add(lblMes);
+            tela.Controls.Add(cmbMes);
+
+            tela.Controls.Add(lblAno);
+            tela.Controls.Add(numAno);
+
+            tela.Controls.Add(btnBuscar);
+
+            tela.Controls.Add(dgv);
+
             tela.Controls.Add(
-                titulo
+                btnSelecionarTudo
             );
 
             tela.Controls.Add(
-                cmbLoja
-            );
-
-            tela.Controls.Add(
-                cmbMes
-            );
-
-            tela.Controls.Add(
-                numAno
-            );
-
-            tela.Controls.Add(
-                pesquisar
-            );
-
-            tela.Controls.Add(
-                dgv
-            );
-
-            tela.Controls.Add(
-                resultado
-            );
-
-            tela.Controls.Add(
-                excluir
+                btnExcluir
             );
 
             painelConteudo.Controls.Add(
                 tela
             );
+
+            CarregarItens();
         }
 
         // =========================================================
         // CONFIGURAÇÕES
         // =========================================================
 
+
         private void AbrirTelaConfiguracoes()
         {
-            telaAtual =
-                TelaAtual.Configuracoes;
+            telaAtual = TelaAtual.Configuracoes;
 
             LimparConteudo();
             DestacarMenu(btnConfiguracoes);
 
-            Panel tela =
-                CriarContainer(650);
+            Panel tela = CriarContainer(720);
 
-            Label titulo =
-                CriarTitulo(
-                    "Configurações"
-                );
+            Label titulo = CriarTitulo("Configurações");
+            titulo.Location = new Point(10, 5);
 
-            titulo.Location =
-                new Point(10, 5);
+            Label lblSecao = CriarLabelSecao("Agente de IA");
+            lblSecao.Font = new Font(
+                "Segoe UI",
+                11F,
+                FontStyle.Bold
+            );
+            lblSecao.Location = new Point(10, 65);
 
-            Button abaIa =
-                CriarBotao(
-                    "Agente de IA",
-                    150,
-                    40
-                );
+            // =========================================================
+            // PROVEDOR
+            // =========================================================
 
-            abaIa.Location =
-                new Point(10, 65);
+            Label lblProvedor = CriarLabelSecao("Provedor");
+            lblProvedor.Location = new Point(10, 115);
 
-            Button abaPastas =
-                CriarBotao(
-                    "Pastas",
-                    110,
-                    40
-                );
+            ComboBox cmbProvedor = CriarCombo(350);
+            cmbProvedor.Location = new Point(10, 145);
 
-            abaPastas.Location =
-                new Point(170, 65);
-
-            Button abaGeral =
-                CriarBotao(
-                    "Geral",
-                    100,
-                    40
-                );
-
-            abaGeral.Location =
-                new Point(290, 65);
-
-            Label lblProvedor =
-                CriarLabelSecao(
-                    "Provedor"
-                );
-
-            lblProvedor.Location =
-                new Point(10, 135);
-
-            ComboBox provedor =
-                CriarCombo(390);
-
-            provedor.Location =
-                new Point(10, 165);
-
-            provedor.Items.AddRange(
-                new string[]
+            cmbProvedor.Items.AddRange(
+                new object[]
                 {
-                    "Claude (Anthropic)",
-                    "OpenAI",
-                    "Gemini",
-                    "OpenAI compatível"
+            "OpenAI",
+            "Claude (Anthropic)",
+            "Gemini (Google)"
                 }
             );
 
-            provedor.SelectedIndex = 0;
+            // =========================================================
+            // MODELO
+            // =========================================================
 
-            Label lblModelo =
-                CriarLabelSecao(
-                    "Modelo"
-                );
+            Label lblModelo = CriarLabelSecao("Modelo");
+            lblModelo.Location = new Point(390, 115);
 
-            lblModelo.Location =
-                new Point(430, 135);
+            ComboBox cmbModelo = CriarCombo(360);
+            cmbModelo.Location = new Point(390, 145);
 
-            TextBox modelo =
-                new TextBox
+            // =========================================================
+            // CHAVE API
+            // =========================================================
+
+            Label lblApi = CriarLabelSecao("Chave da API");
+            lblApi.Location = new Point(10, 205);
+
+            TextBox txtApi = new TextBox
+            {
+                Location = new Point(10, 235),
+                Width = 680,
+                Height = 30,
+
+                BackColor = Color.FromArgb(
+                    25,
+                    25,
+                    25
+                ),
+
+                ForeColor = Color.White,
+
+                BorderStyle =
+                    BorderStyle.FixedSingle,
+
+                UseSystemPasswordChar =
+                    true
+            };
+
+            Button btnMostrar = CriarBotao(
+                "👁",
+                50,
+                30
+            );
+
+            btnMostrar.Location =
+                new Point(700, 235);
+
+            btnMostrar.Click +=
+                (s, e) =>
                 {
-                    Location =
-                        new Point(430, 165),
-
-                    Width = 320,
-
-                    BackColor =
-                        Color.FromArgb(
-                            25,
-                            25,
-                            25
-                        ),
-
-                    ForeColor =
-                        Color.White,
-
-                    BorderStyle =
-                        BorderStyle.FixedSingle
+                    txtApi.UseSystemPasswordChar =
+                        !txtApi.UseSystemPasswordChar;
                 };
 
-            Label lblApi =
+            // =========================================================
+            // ENDPOINT
+            // =========================================================
+
+            Label lblEndpoint = CriarLabelSecao("Endpoint");
+            lblEndpoint.Location = new Point(10, 295);
+
+            TextBox txtEndpoint = new TextBox
+            {
+                Location = new Point(10, 325),
+
+                Width = 740,
+
+                ReadOnly = true,
+
+                BackColor = Color.FromArgb(
+                    25,
+                    25,
+                    25
+                ),
+
+                ForeColor = Color.Gray,
+
+                BorderStyle =
+                    BorderStyle.FixedSingle
+            };
+
+            // =========================================================
+            // TIMEOUT
+            // =========================================================
+
+            Label lblTimeout =
                 CriarLabelSecao(
-                    "Chave da API"
+                    "Timeout por processamento"
                 );
 
-            lblApi.Location =
-                new Point(10, 225);
+            lblTimeout.Location =
+                new Point(10, 380);
 
-            TextBox api =
-                new TextBox
+            NumericUpDown numTimeout =
+    new NumericUpDown
+    {
+        Location =
+            new Point(10, 410),
+
+        Width =
+            110,
+
+        Minimum =
+            30,
+
+        Maximum =
+            3600,
+
+        Value =
+            3600,
+
+        BackColor =
+            Color.FromArgb(
+                25,
+                25,
+                25
+            ),
+
+        ForeColor =
+            Color.White
+    };
+
+            Label lblSegundos =
+                CriarTexto(
+                    "segundos"
+                );
+
+            lblSegundos.Location =
+                new Point(130, 414);
+
+            // =========================================================
+            // COMPORTAMENTO DA IA
+            // =========================================================
+
+            Label lblComportamento =
+                CriarLabelSecao(
+                    "Comportamento da IA"
+                );
+
+            lblComportamento.Location =
+                new Point(10, 465);
+
+            CheckBox chkFornecedor =
+                new CheckBox
                 {
+                    Text =
+                        "Identificar automaticamente o fornecedor",
+
+                    Checked = true,
+                    AutoSize = true,
+                    ForeColor = Color.White,
+
                     Location =
-                        new Point(10, 255),
-
-                    Width = 740,
-
-                    BackColor =
-                        Color.FromArgb(
-                            25,
-                            25,
-                            25
-                        ),
-
-                    ForeColor =
-                        Color.White,
-
-                    BorderStyle =
-                        BorderStyle.FixedSingle,
-
-                    UseSystemPasswordChar =
-                        true
+                        new Point(10, 500)
                 };
 
-            Button testar =
+            CheckBox chkComparacao =
+                new CheckBox
+                {
+                    Text =
+                        "Comparar nomes semelhantes de insumos",
+
+                    Checked = true,
+                    AutoSize = true,
+                    ForeColor = Color.White,
+
+                    Location =
+                        new Point(10, 530)
+                };
+
+            CheckBox chkPreco =
+                new CheckBox
+                {
+                    Text =
+                        "Normalizar preço por grama ou por unidade",
+
+                    Checked = true,
+                    AutoSize = true,
+                    ForeColor = Color.White,
+
+                    Location =
+                        new Point(10, 560)
+                };
+
+            CheckBox chkFornecedorNovo =
+                new CheckBox
+                {
+                    Text =
+                        "Criar coluna quando o fornecedor não existir",
+
+                    Checked = true,
+                    AutoSize = true,
+                    ForeColor = Color.White,
+
+                    Location =
+                        new Point(390, 500)
+                };
+
+            CheckBox chkNaoEncontrado =
+                new CheckBox
+                {
+                    Text =
+                        "Registrar insumos não encontrados",
+
+                    Checked = true,
+                    AutoSize = true,
+                    ForeColor = Color.White,
+
+                    Location =
+                        new Point(390, 530)
+                };
+
+            // =========================================================
+            // STATUS
+            // =========================================================
+
+            Label lblStatus =
+                new Label
+                {
+                    Text =
+                        "Não testado",
+
+                    AutoSize = true,
+
+                    ForeColor =
+                        Color.Gray,
+
+                    Font =
+                        new Font(
+                            "Segoe UI",
+                            10F,
+                            FontStyle.Bold
+                        ),
+
+                    Location =
+                        new Point(200, 638)
+                };
+
+            // =========================================================
+            // FUNÇÃO LOCAL: CARREGAR PROVEDOR
+            // =========================================================
+
+            void CarregarProvedor()
+            {
+                string provedor =
+                    cmbProvedor.SelectedItem?
+                        .ToString()
+                    ?? "";
+
+                cmbModelo.Items.Clear();
+
+                // -----------------------------------------------------
+                // OPENAI
+                // -----------------------------------------------------
+
+                if (provedor == "OpenAI")
+                {
+                    cmbModelo.Items.AddRange(
+                        new object[]
+                        {
+                    "gpt-5.6-sol",
+                    "gpt-6-luna",
+                    "gpt-6-sol"
+                        }
+                    );
+
+                    txtEndpoint.Text =
+                        "https://api.openai.com/v1";
+                }
+
+                // -----------------------------------------------------
+                // CLAUDE
+                // -----------------------------------------------------
+
+                else if (
+                    provedor ==
+                    "Claude (Anthropic)"
+                )
+                {
+                    cmbModelo.Items.AddRange(
+                        new object[]
+                        {
+                    "claude-sonnet",
+                    "claude-opus",
+                    "claude-haiku"
+                        }
+                    );
+
+                    txtEndpoint.Text =
+                        "https://api.anthropic.com";
+                }
+
+                // -----------------------------------------------------
+                // GEMINI
+                // -----------------------------------------------------
+
+                else if (
+                    provedor ==
+                    "Gemini (Google)"
+                )
+                {
+                    cmbModelo.Items.AddRange(
+                        new object[]
+                        {
+                            "gemini-3.5-flash-lite",
+                            "gemini-3.8-flash"
+                        }
+                    );
+
+                    txtEndpoint.Text =
+                        "https://generativelanguage.googleapis.com";
+                }
+
+                if (
+                    cmbModelo.Items.Count > 0
+                )
+                {
+                    cmbModelo.SelectedIndex = 0;
+                }
+
+                // Cada provedor possui sua própria chave.
+                txtApi.Text = "";
+
+                lblStatus.Text =
+                    "Não testado";
+
+                lblStatus.ForeColor =
+                    Color.Gray;
+            }
+
+            // =========================================================
+            // ALTERAR PROVEDOR
+            // =========================================================
+
+            cmbProvedor.SelectedIndexChanged +=
+                (s, e) =>
+                {
+                    CarregarProvedor();
+                };
+
+            // =========================================================
+            // SELEÇÃO INICIAL
+            // =========================================================
+
+            if (
+                cmbProvedor.Items.Contains(
+                    provedorIA
+                )
+            )
+            {
+                cmbProvedor.SelectedItem =
+                    provedorIA;
+            }
+            else
+            {
+                cmbProvedor.SelectedIndex = 0;
+            }
+
+            // =========================================================
+            // TESTAR
+            // =========================================================
+
+            Button btnTestar =
                 CriarBotao(
                     "Testar conexão",
                     170,
                     42
                 );
 
-            testar.Location =
-                new Point(10, 320);
+            btnTestar.Location =
+                new Point(10, 625);
 
-            Label status =
-                new Label
-                {
-                    Text = "Não testado",
-                    AutoSize = true,
-                    ForeColor = Color.Gray,
-                    Location = new Point(200, 332)
-                };
+            btnTestar.Click +=
+    async (s, e) =>
+    {
+        string provedor =
+            cmbProvedor.SelectedItem?
+                .ToString()
+            ?? "";
 
-            testar.Click +=
+        string modelo =
+            cmbModelo.SelectedItem?
+                .ToString()
+            ?? "";
+
+        string chave =
+            txtApi.Text.Trim();
+
+        // =====================================================
+        // VALIDAÇÕES
+        // =====================================================
+
+        if (
+            string.IsNullOrWhiteSpace(
+                provedor
+            )
+        )
+        {
+            MessageBox.Show(
+                "Selecione um provedor de IA.",
+                "Configuração da IA",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+
+            return;
+        }
+
+        if (
+            string.IsNullOrWhiteSpace(
+                modelo
+            )
+        )
+        {
+            MessageBox.Show(
+                "Selecione um modelo.",
+                "Configuração da IA",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+
+            return;
+        }
+
+        if (
+            string.IsNullOrWhiteSpace(
+                chave
+            )
+        )
+        {
+            MessageBox.Show(
+                "Informe a chave da API.",
+                "Configuração da IA",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // INICIAR TESTE
+        // =====================================================
+
+        lblStatus.Text =
+            "Testando conexão...";
+
+        lblStatus.ForeColor =
+            Color.Gold;
+
+        btnTestar.Enabled =
+            false;
+
+        cmbProvedor.Enabled =
+            false;
+
+        cmbModelo.Enabled =
+            false;
+
+        txtApi.Enabled =
+            false;
+
+        try
+        {
+            // =================================================
+            // CRIA O AGENTE CORRETO
+            // =================================================
+
+            IAgenteIA agente =
+                AgenteIAFactory.Criar(
+                    provedor,
+                    chave,
+                    modelo,
+                    (int)numTimeout.Value
+                );
+
+            // =================================================
+            // TESTE REAL DA API
+            // =================================================
+
+            bool conectado =
+                await agente
+                    .TestarConexaoAsync();
+
+            // =================================================
+            // SUCESSO
+            // =================================================
+
+            if (conectado)
+            {
+                lblStatus.Text =
+                    "● Conectado";
+
+                lblStatus.ForeColor =
+                    Color.LightGreen;
+
+                MessageBox.Show(
+                    "Conexão realizada com sucesso.\n\n" +
+                    $"Provedor: {provedor}\n" +
+                    $"Modelo: {modelo}",
+                    "Conexão com IA",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+            }
+
+            // =================================================
+            // SEM RESPOSTA
+            // =================================================
+
+            else
+            {
+                lblStatus.Text =
+                    "● Sem resposta";
+
+                lblStatus.ForeColor =
+                    Color.Orange;
+
+                MessageBox.Show(
+                    "O provedor foi acessado, mas não retornou uma resposta válida.",
+                    "Conexão com IA",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+            }
+        }
+
+        // =====================================================
+        // ERRO
+        // =====================================================
+
+        catch (Exception ex)
+        {
+            lblStatus.Text =
+                "● Falha na conexão";
+
+            lblStatus.ForeColor =
+                Color.LightCoral;
+
+            string mensagemErro =
+                ex.Message;
+
+            // =============================================
+            // OPENAI - SEM CRÉDITOS
+            // =============================================
+
+            if (
+                mensagemErro.Contains(
+                    "credit_balance_exhausted",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                ||
+                mensagemErro.Contains(
+                    "insufficient_quota",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                MessageBox.Show(
+                    "A conexão com a OpenAI foi realizada, " +
+                    "mas a conta da API está sem créditos disponíveis.\n\n" +
+                    "Adicione créditos no faturamento da OpenAI " +
+                    "e tente novamente.",
+                    "OpenAI sem créditos",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+
+                return;
+            }
+
+            // =============================================
+            // CHAVE INVÁLIDA
+            // =============================================
+
+            if (
+                mensagemErro.Contains(
+                    "401"
+                )
+                ||
+                mensagemErro.Contains(
+                    "Unauthorized",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                ||
+                mensagemErro.Contains(
+                    "API_KEY_INVALID",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                ||
+                mensagemErro.Contains(
+                    "invalid api key",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                MessageBox.Show(
+                    "A chave da API parece ser inválida.\n\n" +
+                    "Confira a chave informada e tente novamente.",
+                    "Chave inválida",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
+
+                return;
+            }
+
+            // =============================================
+            // MODELO NÃO ENCONTRADO
+            // =============================================
+
+            if (
+                mensagemErro.Contains(
+                    "404"
+                )
+                ||
+                mensagemErro.Contains(
+                    "model",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                &&
+                mensagemErro.Contains(
+                    "not found",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                MessageBox.Show(
+                    "O modelo selecionado não foi encontrado ou " +
+                    "não está disponível para essa chave.\n\n" +
+                    $"Modelo: {modelo}",
+                    "Modelo indisponível",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+
+                return;
+            }
+
+            // =============================================
+            // LIMITE / RATE LIMIT
+            // =============================================
+
+            if (
+                mensagemErro.Contains(
+                    "429"
+                )
+                ||
+                mensagemErro.Contains(
+                    "rate limit",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                ||
+                mensagemErro.Contains(
+                    "RESOURCE_EXHAUSTED",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                MessageBox.Show(
+                    "O limite de uso da API foi atingido temporariamente.\n\n" +
+                    "Aguarde alguns instantes e tente novamente.",
+                    "Limite da API",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+
+                return;
+            }
+
+            // =============================================
+            // TIMEOUT
+            // =============================================
+
+            if (
+                ex is TaskCanceledException
+                ||
+                mensagemErro.Contains(
+                    "timeout",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                MessageBox.Show(
+                    "A requisição demorou mais do que o tempo configurado.\n\n" +
+                    $"Timeout atual: {numTimeout.Value} segundos.",
+                    "Tempo excedido",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+
+                return;
+            }
+
+            // =============================================
+            // ERRO GENÉRICO
+            // =============================================
+
+            MessageBox.Show(
+                "Não foi possível conectar ao provedor selecionado.\n\n" +
+                $"Provedor: {provedor}\n" +
+                $"Modelo: {modelo}\n\n" +
+                mensagemErro,
+                "Erro de conexão",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error
+            );
+        }
+
+        // =====================================================
+        // REATIVAR CAMPOS
+        // =====================================================
+
+        finally
+        {
+            btnTestar.Enabled =
+                true;
+
+            cmbProvedor.Enabled =
+                true;
+
+            cmbModelo.Enabled =
+                true;
+
+            txtApi.Enabled =
+                true;
+        }
+    };
+
+            // =========================================================
+            // SALVAR
+            // =========================================================
+
+            Button btnSalvar =
+                CriarBotaoAzul(
+                    "Salvar configurações",
+                    200,
+                    42
+                );
+
+            btnSalvar.Location =
+                new Point(550, 625);
+
+            btnSalvar.Click +=
                 (s, e) =>
                 {
-                    status.Text =
-                        "Conectado";
+                    string provedor =
+                        cmbProvedor.SelectedItem?
+                            .ToString()
+                        ?? "";
 
-                    status.ForeColor =
-                        Color.LimeGreen;
+                    string modelo =
+                        cmbModelo.SelectedItem?
+                            .ToString()
+                        ?? "";
+
+                    string chave =
+                        txtApi.Text.Trim();
+
+                    if (
+                        string.IsNullOrWhiteSpace(
+                            provedor
+                        )
+                    )
+                    {
+                        MessageBox.Show(
+                            "Selecione um provedor.",
+                            "Configuração",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+
+                        return;
+                    }
+
+                    if (
+                        string.IsNullOrWhiteSpace(
+                            modelo
+                        )
+                    )
+                    {
+                        MessageBox.Show(
+                            "Selecione um modelo.",
+                            "Configuração",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+
+                        return;
+                    }
+
+                    if (
+                        string.IsNullOrWhiteSpace(
+                            chave
+                        )
+                    )
+                    {
+                        MessageBox.Show(
+                            "Informe a chave da API.",
+                            "Configuração",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+
+                        return;
+                    }
+
+                    provedorIA =
+                        provedor;
+
+                    modeloIA =
+                        modelo;
+
+                    apiKeyIA =
+                        chave;
+
+                    timeoutIA =
+                        (int)numTimeout.Value;
+
+                    configuracaoIASalva =
+                        true;
+
+                    lblStatus.Text =
+                        "● Configuração salva";
+
+                    lblStatus.ForeColor =
+                        Color.LightGreen;
+
+                    MessageBox.Show(
+                        "Configuração salva.\n\n" +
+                        $"Provedor: {provedorIA}\n" +
+                        $"Modelo: {modeloIA}",
+                        "Configuração",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
+                    );
                 };
 
-            tela.Controls.Add(titulo);
-            tela.Controls.Add(abaIa);
-            tela.Controls.Add(abaPastas);
-            tela.Controls.Add(abaGeral);
-            tela.Controls.Add(lblProvedor);
-            tela.Controls.Add(provedor);
-            tela.Controls.Add(lblModelo);
-            tela.Controls.Add(modelo);
-            tela.Controls.Add(lblApi);
-            tela.Controls.Add(api);
-            tela.Controls.Add(testar);
-            tela.Controls.Add(status);
+            // =========================================================
+            // CONTROLES
+            // =========================================================
 
-            painelConteudo.Controls.Add(tela);
+            tela.Controls.Add(titulo);
+
+            tela.Controls.Add(lblSecao);
+
+            tela.Controls.Add(lblProvedor);
+            tela.Controls.Add(cmbProvedor);
+
+            tela.Controls.Add(lblModelo);
+            tela.Controls.Add(cmbModelo);
+
+            tela.Controls.Add(lblApi);
+            tela.Controls.Add(txtApi);
+            tela.Controls.Add(btnMostrar);
+
+            tela.Controls.Add(lblEndpoint);
+            tela.Controls.Add(txtEndpoint);
+
+            tela.Controls.Add(lblTimeout);
+            tela.Controls.Add(numTimeout);
+            tela.Controls.Add(lblSegundos);
+
+            tela.Controls.Add(lblComportamento);
+
+            tela.Controls.Add(chkFornecedor);
+            tela.Controls.Add(chkComparacao);
+            tela.Controls.Add(chkPreco);
+            tela.Controls.Add(chkFornecedorNovo);
+            tela.Controls.Add(chkNaoEncontrado);
+
+            tela.Controls.Add(btnTestar);
+            tela.Controls.Add(lblStatus);
+            tela.Controls.Add(btnSalvar);
+
+            painelConteudo.Controls.Add(
+                tela
+            );
         }
 
         // =========================================================
@@ -4629,6 +5230,371 @@ namespace COTACAO_INSUMO
 
             return largura;
         }
+
+        private async Task ProcessarCotacaoComIAAsync()
+        {
+            // Faz cópia para evitar modificação da lista
+            // enquanto estamos processando.
+            List<string> pdfsDoProcessamento =
+                pdfsSelecionados.ToList();
+
+            string excelOriginal =
+                caminhoExcelSelecionado;
+
+            string caminhoPlanilhaDestino =
+                ObterCaminhoPlanilhaPeriodo(
+                    lojaSelecionada,
+                    mesSelecionado,
+                    anoSelecionado
+                );
+
+            // =========================================================
+            // TELA DE PROCESSAMENTO
+            // =========================================================
+
+            LimparConteudo();
+
+            Panel tela =
+                CriarContainer(
+                    650
+                );
+
+            Label titulo =
+                CriarTitulo(
+                    "Processando cotações..."
+                );
+
+            titulo.Location =
+                new Point(10, 10);
+
+            Label descricao =
+                CriarTexto(
+                    "Aguarde enquanto a IA analisa os PDFs e atualiza a planilha."
+                );
+
+            descricao.Location =
+                new Point(10, 50);
+
+            ProgressBar progresso =
+                new ProgressBar
+                {
+                    Location =
+                        new Point(
+                            10,
+                            90
+                        ),
+
+                    Width =
+                        800,
+
+                    Height =
+                        20,
+
+                    Style =
+                        ProgressBarStyle.Marquee,
+
+                    MarqueeAnimationSpeed =
+                        30
+                };
+
+            Panel card =
+                CriarCard(
+                    800,
+                    230
+                );
+
+            card.Location =
+                new Point(
+                    10,
+                    135
+                );
+
+            Label lblStatus =
+                new Label
+                {
+                    Text =
+                        "Preparando arquivos...",
+
+                    AutoSize =
+                        false,
+
+                    Width =
+                        750,
+
+                    Height =
+                        180,
+
+                    ForeColor =
+                        Color.White,
+
+                    Font =
+                        new Font(
+                            "Segoe UI",
+                            11F
+                        ),
+
+                    Location =
+                        new Point(
+                            20,
+                            20
+                        )
+                };
+
+            card.Controls.Add(
+                lblStatus
+            );
+
+            tela.Controls.Add(
+                titulo
+            );
+
+            tela.Controls.Add(
+                descricao
+            );
+
+            tela.Controls.Add(
+                progresso
+            );
+
+            tela.Controls.Add(
+                card
+            );
+
+            painelConteudo.Controls.Add(
+                tela
+            );
+
+            try
+            {
+                // =====================================================
+                // 1. PREPARAR PLANILHA
+                // =====================================================
+
+                lblStatus.Text =
+                    "1/5  Preparando a planilha...";
+
+                await Task.Yield();
+
+                CriarEstruturaPeriodo();
+
+                bool planilhaJaExiste =
+                    File.Exists(
+                        caminhoPlanilhaDestino
+                    );
+
+                if (!planilhaJaExiste)
+                {
+                    if (
+                        string.IsNullOrWhiteSpace(
+                            excelOriginal
+                        ) ||
+                        !File.Exists(
+                            excelOriginal
+                        )
+                    )
+                    {
+                        throw new Exception(
+                            "O Excel-base da nova cotação não foi encontrado."
+                        );
+                    }
+
+                    File.Copy(
+                        excelOriginal,
+                        caminhoPlanilhaDestino,
+                        true
+                    );
+                }
+
+                // =====================================================
+                // 2. IA
+                // =====================================================
+
+                lblStatus.Text =
+                    "2/5  Conectando à OpenAI...\n\n" +
+                    $"Modelo: {modeloIA}";
+
+                await Task.Yield();
+
+                IAgenteIA iaService =
+                    AgenteIAFactory.Criar(
+                    provedorIA,
+                    apiKeyIA,
+                    modeloIA,
+                    timeoutIA
+                    );
+
+                CotacaoProcessor processor =
+                    new CotacaoProcessor(
+                        iaService
+                    );
+
+                // =====================================================
+                // 3. ANALISAR PDFs
+                // =====================================================
+
+                lblStatus.Text =
+                    "3/5  Analisando os PDFs dos fornecedores...\n\n" +
+                    $"{pdfsDoProcessamento.Count} arquivo(s) serão analisados.\n\n" +
+                    "A IA está identificando fornecedores, produtos e correspondências.";
+
+                await Task.Yield();
+
+                ResultadoProcessamento resultado =
+                    await processor.ProcessarAsync(
+                        caminhoPlanilhaDestino,
+                        pdfsDoProcessamento
+                    );
+
+                // =====================================================
+                // 4. CONTADORES
+                // =====================================================
+
+                lblStatus.Text =
+                    "4/5  Registrando os resultados...";
+
+                await Task.Yield();
+
+                ultimoTotalInsumosPreenchidos =
+                    resultado.TotalPreenchidos;
+
+                ultimoTotalInsumosNaoEncontrados =
+                    resultado.NaoEncontrados.Count;
+
+                // =====================================================
+                // NÃO ENCONTRADOS
+                // =====================================================
+
+                RegistrarNaoEncontrados(
+                    resultado
+                );
+
+                // =====================================================
+                // 5. FINAL
+                // =====================================================
+
+                lblStatus.Text =
+                    "5/5  Finalizando a cotação...\n\n" +
+                    $"Preenchidos: {ultimoTotalInsumosPreenchidos}\n" +
+                    $"Não encontrados: {ultimoTotalInsumosNaoEncontrados}";
+
+                await Task.Delay(
+                    500
+                );
+
+                // =====================================================
+                // LIMPAR SOMENTE DEPOIS DE SUCESSO
+                // =====================================================
+
+                pdfsSelecionados.Clear();
+
+                caminhoExcelSelecionado =
+                    "";
+
+                // =====================================================
+                // CONCLUÍDO
+                // =====================================================
+
+                AbrirTelaConcluido();
+            }
+            catch (Exception ex)
+            {
+                progresso.Style =
+                    ProgressBarStyle.Blocks;
+
+                progresso.Value =
+                    0;
+
+                lblStatus.Text =
+                    "O processamento foi interrompido.";
+
+                MessageBox.Show(
+                    "Não foi possível processar a cotação.\n\n" +
+                    ex.Message +
+                    "\n\n" +
+                    "Os PDFs selecionados foram mantidos para você tentar novamente.",
+                    "Erro no processamento",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
+
+                // IMPORTANTE:
+                // não limpamos PDF/Excel quando dá erro.
+                AbrirTelaNovaCotacao();
+            }
+        }
+
+        private void RegistrarNaoEncontrados(
+    ResultadoProcessamento resultado)
+        {
+            foreach (
+                ItemNaoEncontradoProcessado item
+                in resultado.NaoEncontrados
+            )
+            {
+                ItemNaoEncontrado novo =
+                    new ItemNaoEncontrado
+                    {
+                        Loja =
+                            lojaSelecionada,
+
+                        Mes =
+                            mesSelecionado,
+
+                        Ano =
+                            anoSelecionado,
+
+                        Fornecedor =
+                            item.Fornecedor,
+
+                        Insumo =
+                            item.Insumo,
+
+                        PrecoPorGrama =
+                            item.PrecoNormalizado
+                                .ToString(
+                                    "0.############################"
+                                ),
+
+                        TipoPreco =
+                            item.TipoPreco,
+
+                        UnidadeOriginal =
+                            item.UnidadeOriginal,
+
+                        Data =
+                            DateTime.Now.ToString(
+                                "dd/MM"
+                            )
+                    };
+
+                bool jaExiste =
+                    itensNaoEncontrados.Any(
+                        x =>
+                            x.Loja ==
+                                novo.Loja &&
+
+                            x.Mes ==
+                                novo.Mes &&
+
+                            x.Ano ==
+                                novo.Ano &&
+
+                            x.Fornecedor ==
+                                novo.Fornecedor &&
+
+                            x.Insumo ==
+                                novo.Insumo
+                    );
+
+                if (!jaExiste)
+                {
+                    itensNaoEncontrados.Add(
+                        novo
+                    );
+                }
+            }
+        }
+
         private void Form1_Load(
             object sender,
             EventArgs e)
