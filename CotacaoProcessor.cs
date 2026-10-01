@@ -11,29 +11,28 @@ namespace COTACAO_INSUMO
     {
         private readonly IAgenteIA iaService;
 
-        // Confiança mínima para preenchimento automático
-        private const decimal CONFIANCA_MINIMA =
-            0.90m;
+        // Confiança mínima para preencher automaticamente
+        private const decimal CONFIANCA_MINIMA = 0.90m;
 
         public CotacaoProcessor(
-    IAgenteIA iaService)
+            IAgenteIA iaService)
         {
-            this.iaService =
-                iaService;
+            this.iaService = iaService;
         }
 
-        public async Task<ResultadoProcessamento>
-            ProcessarAsync(
-                string caminhoExcel,
-                List<string> pdfs)
+        // =====================================================
+        // PROCESSAMENTO PRINCIPAL
+        // =====================================================
+
+        public async Task<ResultadoProcessamento> ProcessarAsync(
+            string caminhoExcel,
+            List<string> pdfs)
         {
             ResultadoProcessamento resultado =
                 new ResultadoProcessamento();
 
             using XLWorkbook workbook =
-                new XLWorkbook(
-                    caminhoExcel
-                );
+                new XLWorkbook(caminhoExcel);
 
             IXLWorksheet planilha =
                 workbook.Worksheets.First();
@@ -43,24 +42,20 @@ namespace COTACAO_INSUMO
                     planilha
                 );
 
-            foreach (
-                string caminhoPdf
-                in pdfs)
+            foreach (string caminhoPdf in pdfs)
             {
                 ResultadoCotacaoIA? resposta =
-                    await iaService
-                        .AnalisarPdfAsync(
-                            caminhoPdf,
-                            listaInsumos
-                        );
+                    await iaService.AnalisarPdfAsync(
+                        caminhoPdf,
+                        listaInsumos
+                    );
 
                 if (resposta == null)
-                {
                     continue;
-                }
 
                 string fornecedor =
-                    resposta.Fornecedor.Trim();
+                    resposta.Fornecedor?.Trim()
+                    ?? "";
 
                 if (
                     string.IsNullOrWhiteSpace(
@@ -80,7 +75,8 @@ namespace COTACAO_INSUMO
 
                 foreach (
                     ItemCotacaoIA item
-                    in resposta.Itens)
+                    in resposta.Itens
+                )
                 {
                     ProcessarItem(
                         planilha,
@@ -98,7 +94,7 @@ namespace COTACAO_INSUMO
         }
 
         // =====================================================
-        // ITEM
+        // PROCESSAR ITEM
         // =====================================================
 
         private void ProcessarItem(
@@ -108,6 +104,7 @@ namespace COTACAO_INSUMO
             ItemCotacaoIA item,
             ResultadoProcessamento resultado)
         {
+            // Cálculo feito pelo C#, não pela IA
             ResultadoPreco preco =
                 CalculadoraPreco.Calcular(
                     item.UnidadeOriginal,
@@ -120,7 +117,10 @@ namespace COTACAO_INSUMO
             item.TipoPreco =
                 preco.TipoPreco;
 
+            // -------------------------------------------------
             // Unidade não reconhecida
+            // -------------------------------------------------
+
             if (!preco.PodeConverter)
             {
                 AdicionarNaoEncontrado(
@@ -132,7 +132,10 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // IA não encontrou
+            // -------------------------------------------------
+            // IA não encontrou correspondência
+            // -------------------------------------------------
+
             if (!item.Encontrado)
             {
                 AdicionarNaoEncontrado(
@@ -144,7 +147,10 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // Confiança insuficiente
+            // -------------------------------------------------
+            // Confiança baixa
+            // -------------------------------------------------
+
             if (
                 item.Confianca <
                 CONFIANCA_MINIMA
@@ -158,6 +164,10 @@ namespace COTACAO_INSUMO
 
                 return;
             }
+
+            // -------------------------------------------------
+            // Nome vazio
+            // -------------------------------------------------
 
             if (
                 string.IsNullOrWhiteSpace(
@@ -173,6 +183,10 @@ namespace COTACAO_INSUMO
 
                 return;
             }
+
+            // -------------------------------------------------
+            // Localizar linha no Excel
+            // -------------------------------------------------
 
             int linha =
                 LocalizarLinhaInsumo(
@@ -191,9 +205,16 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // =================================================
-            // ESCREVER PREÇO NORMALIZADO
-            // =================================================
+            // -------------------------------------------------
+            // PREÇO COM 5 CASAS DECIMAIS
+            // -------------------------------------------------
+
+            decimal valorArredondado =
+                Math.Round(
+                    preco.PrecoNormalizado,
+                    5,
+                    MidpointRounding.AwayFromZero
+                );
 
             IXLCell celula =
                 planilha.Cell(
@@ -201,29 +222,28 @@ namespace COTACAO_INSUMO
                     colunaFornecedor
                 );
 
-            decimal valorArredondado =
-    Math.Round(
-        preco.PrecoNormalizado,
-        5,
-        MidpointRounding.AwayFromZero
-    );
-
             celula.Value =
                 valorArredondado;
 
-            celula.Style.NumberFormat.Format =
+            celula.Style
+                .NumberFormat
+                .Format =
                 "0.00000";
 
+            // -------------------------------------------------
+            // ATUALIZAR FORNECEDOR MAIS BARATO
+            // -------------------------------------------------
+
             AtualizarFornecedorMaisBarato(
-    planilha,
-    linha
-);
+                planilha,
+                linha
+            );
 
             resultado.TotalPreenchidos++;
         }
 
         // =====================================================
-        // NÃO ENCONTRADO
+        // NÃO ENCONTRADOS
         // =====================================================
 
         private void AdicionarNaoEncontrado(
@@ -231,6 +251,13 @@ namespace COTACAO_INSUMO
             string fornecedor,
             ItemCotacaoIA item)
         {
+            decimal preco =
+                Math.Round(
+                    item.PrecoNormalizado,
+                    5,
+                    MidpointRounding.AwayFromZero
+                );
+
             resultado.NaoEncontrados.Add(
                 new ItemNaoEncontradoProcessado
                 {
@@ -241,7 +268,7 @@ namespace COTACAO_INSUMO
                         item.ProdutoPdf,
 
                     PrecoNormalizado =
-                        item.PrecoNormalizado,
+                        preco,
 
                     TipoPreco =
                         item.TipoPreco,
@@ -253,7 +280,7 @@ namespace COTACAO_INSUMO
         }
 
         // =====================================================
-        // LISTA DE INSUMOS
+        // CRIAR LISTA DOS INSUMOS DO EXCEL
         // =====================================================
 
         private string CriarListaInsumos(
@@ -293,9 +320,7 @@ namespace COTACAO_INSUMO
                     )
                 )
                 {
-                    sb.AppendLine(
-                        nome
-                    );
+                    sb.AppendLine(nome);
                 }
             }
 
@@ -303,7 +328,7 @@ namespace COTACAO_INSUMO
         }
 
         // =====================================================
-        // LOCALIZAR INSUMO
+        // LOCALIZAR INSUMO NO EXCEL
         // =====================================================
 
         private int LocalizarLinhaInsumo(
@@ -338,7 +363,8 @@ namespace COTACAO_INSUMO
                         .GetFormattedString();
 
                 if (
-                    NormalizarNome(atual) ==
+                    NormalizarNome(atual)
+                    ==
                     procurar
                 )
                 {
@@ -348,6 +374,10 @@ namespace COTACAO_INSUMO
 
             return -1;
         }
+
+        // =====================================================
+        // NORMALIZAR NOME DO INSUMO
+        // =====================================================
 
         private string NormalizarNome(
             string texto)
@@ -361,94 +391,33 @@ namespace COTACAO_INSUMO
                 return "";
             }
 
-            return texto
-                .Trim()
-                .ToUpperInvariant()
-                .Replace("-", " ")
-                .Replace("/", " ")
-                .Replace("  ", " ");
-        }
+            string resultado =
+                texto
+                    .Trim()
+                    .ToUpperInvariant()
+                    .Replace("-", " ")
+                    .Replace("/", " ");
 
-        // =====================================================
-        // FORNECEDOR
-        // =====================================================
-
-        private string NormalizarFornecedor(
-    IXLWorksheet planilha,
-    string fornecedor)
-        {
-            IXLRange? range =
-                planilha.RangeUsed();
-
-            int ultimaColuna =
-                range?
-                    .LastColumn()
-                    .ColumnNumber()
-                ?? 1;
-
-            string fornecedorNormalizado =
-                NormalizarFornecedor(
-                    fornecedor
-                );
-
-            for (
-                int coluna = 1;
-                coluna <= ultimaColuna;
-                coluna++)
+            while (
+                resultado.Contains("  ")
+            )
             {
-                string cabecalho =
-                    planilha
-                        .Cell(
-                            1,
-                            coluna
-                        )
-                        .GetFormattedString()
-                        .Trim();
-
-                string cabecalhoNormalizado =
-                    NormalizarFornecedor(
-                        cabecalho
+                resultado =
+                    resultado.Replace(
+                        "  ",
+                        " "
                     );
-
-                if (
-                    cabecalhoNormalizado ==
-                    fornecedorNormalizado
-                )
-                {
-                    return coluna;
-                }
             }
 
-            // Não encontrou fornecedor equivalente:
-            // cria nova coluna
-            int novaColuna =
-                ultimaColuna + 1;
-
-            IXLCell cabecalhoNovo =
-                planilha.Cell(
-                    1,
-                    novaColuna
-                );
-
-            cabecalhoNovo.Value =
-                fornecedor;
-
-            if (ultimaColuna > 0)
-            {
-                cabecalhoNovo.Style =
-                    planilha
-                        .Cell(
-                            1,
-                            ultimaColuna
-                        )
-                        .Style;
-            }
-
-            return novaColuna;
+            return resultado;
         }
 
+        // =====================================================
+        // NORMALIZAR FORNECEDOR
+        // =====================================================
+
         private string NormalizarFornecedor(
-    string fornecedor)
+            string fornecedor)
         {
             if (
                 string.IsNullOrWhiteSpace(
@@ -464,7 +433,10 @@ namespace COTACAO_INSUMO
                     .Trim()
                     .ToUpperInvariant();
 
-            // aliases conhecidos
+            // =================================================
+            // APELIDOS / NOMES COMERCIAIS
+            // =================================================
+
             if (nome.Contains("SIXTY"))
                 return "SIXTY";
 
@@ -489,8 +461,13 @@ namespace COTACAO_INSUMO
             if (nome.Contains("FLORIEN"))
                 return "FLORIEN";
 
-            if (nome.Contains("VALDEQUIMICA"))
+            if (
+                nome.Contains("VALDEQUIMICA") ||
+                nome.Contains("VALDEQUÍMICA")
+            )
+            {
                 return "VALDEQUIMICA";
+            }
 
             if (nome.Contains("AQIA"))
                 return "AQIA";
@@ -501,34 +478,59 @@ namespace COTACAO_INSUMO
             if (nome.Contains("CALDIC"))
                 return "CALDIC";
 
-            if (nome == "PN")
+            if (
+                nome == "PN" ||
+                nome.StartsWith("PN ")
+            )
+            {
                 return "PN";
+            }
 
-            return nome
-                .Replace(".", "")
-                .Replace("-", " ")
-                .Replace("/", " ")
-                .Replace("  ", " ");
+            nome =
+                nome
+                    .Replace(".", "")
+                    .Replace("-", " ")
+                    .Replace("/", " ");
+
+            while (
+                nome.Contains("  ")
+            )
+            {
+                nome =
+                    nome.Replace(
+                        "  ",
+                        " "
+                    );
+            }
+
+            return nome.Trim();
         }
 
-        private void ProcessarItem(
-    IXLWorksheet planilha,
-    int linha)
-        {
-            // Procura a coluna "Fornecedor mais em conta"
-            int colunaFornecedorMaisBarato =
-                -1;
+        // =====================================================
+        // OBTER OU CRIAR COLUNA DO FORNECEDOR
+        // =====================================================
 
+        private int ObterOuCriarColunaFornecedor(
+            IXLWorksheet planilha,
+            string fornecedor)
+        {
             IXLRange? range =
                 planilha.RangeUsed();
 
-            if (range == null)
-                return;
-
             int ultimaColuna =
-                range
+                range?
                     .LastColumn()
-                    .ColumnNumber();
+                    .ColumnNumber()
+                ?? 1;
+
+            string fornecedorNormalizado =
+                NormalizarFornecedor(
+                    fornecedor
+                );
+
+            // =================================================
+            // PRIMEIRO PROCURA UMA COLUNA JÁ EXISTENTE
+            // =================================================
 
             for (
                 int coluna = 1;
@@ -545,9 +547,113 @@ namespace COTACAO_INSUMO
                         .Trim();
 
                 if (
-                    cabecalho.Equals(
-                        "Fornecedor mais em conta",
-                        StringComparison.OrdinalIgnoreCase
+                    string.IsNullOrWhiteSpace(
+                        cabecalho
+                    )
+                )
+                {
+                    continue;
+                }
+
+                string cabecalhoNormalizado =
+                    NormalizarFornecedor(
+                        cabecalho
+                    );
+
+                if (
+                    cabecalhoNormalizado ==
+                    fornecedorNormalizado
+                )
+                {
+                    return coluna;
+                }
+            }
+
+            // =================================================
+            // NÃO EXISTE:
+            // CRIA NOVA COLUNA
+            // =================================================
+
+            int novaColuna =
+                ultimaColuna + 1;
+
+            IXLCell cabecalhoNovo =
+                planilha.Cell(
+                    1,
+                    novaColuna
+                );
+
+            // Usa o nome normalizado se existir
+            cabecalhoNovo.Value =
+                string.IsNullOrWhiteSpace(
+                    fornecedorNormalizado
+                )
+                    ? fornecedor
+                    : fornecedorNormalizado;
+
+            // Copia estilo da coluna anterior
+            if (ultimaColuna > 0)
+            {
+                cabecalhoNovo.Style =
+                    planilha
+                        .Cell(
+                            1,
+                            ultimaColuna
+                        )
+                        .Style;
+            }
+
+            return novaColuna;
+        }
+
+        // =====================================================
+        // ATUALIZAR FORNECEDOR MAIS BARATO
+        // =====================================================
+
+        private void AtualizarFornecedorMaisBarato(
+            IXLWorksheet planilha,
+            int linha)
+        {
+            IXLRange? range =
+                planilha.RangeUsed();
+
+            if (range == null)
+                return;
+
+            int ultimaColuna =
+                range
+                    .LastColumn()
+                    .ColumnNumber();
+
+            int colunaFornecedorMaisBarato =
+                -1;
+
+            // =================================================
+            // DESCOBRIR COLUNA
+            // "Fornecedor mais em conta"
+            // =================================================
+
+            for (
+                int coluna = 1;
+                coluna <= ultimaColuna;
+                coluna++)
+            {
+                string cabecalho =
+                    planilha
+                        .Cell(
+                            1,
+                            coluna
+                        )
+                        .GetFormattedString()
+                        .Trim();
+
+                if (
+                    NormalizarNome(
+                        cabecalho
+                    )
+                    ==
+                    NormalizarNome(
+                        "Fornecedor mais em conta"
                     )
                 )
                 {
@@ -568,8 +674,12 @@ namespace COTACAO_INSUMO
             decimal? menorPreco =
                 null;
 
-            string fornecedorMenorPreco =
+            string fornecedorMaisBarato =
                 "";
+
+            // =================================================
+            // PERCORRER COLUNAS DE FORNECEDORES
+            // =================================================
 
             for (
                 int coluna = 1;
@@ -602,21 +712,33 @@ namespace COTACAO_INSUMO
                     continue;
                 }
 
-                // evita colunas que não são fornecedores
+                // =============================================
+                // IGNORAR COLUNAS QUE NÃO SÃO FORNECEDORES
+                // =============================================
+
+                string headerNormalizado =
+                    NormalizarNome(
+                        cabecalho
+                    );
+
                 if (
-                    cabecalho.Equals(
-                        "INSUMO",
-                        StringComparison.OrdinalIgnoreCase
+                    headerNormalizado ==
+                    "INSUMO"
+                    ||
+                    headerNormalizado.Contains(
+                        "FORNECEDOR ANTERIOR"
                     )
                     ||
-                    cabecalho.Contains(
-                        "fornecedor",
-                        StringComparison.OrdinalIgnoreCase
+                    headerNormalizado.Contains(
+                        "FORNECEDOR MAIS EM CONTA"
                     )
                     ||
-                    cabecalho.Contains(
-                        "quantidade",
-                        StringComparison.OrdinalIgnoreCase
+                    headerNormalizado.Contains(
+                        "QUANTIDADE"
+                    )
+                    ||
+                    headerNormalizado.Contains(
+                        "QTD"
                     )
                 )
                 {
@@ -633,28 +755,33 @@ namespace COTACAO_INSUMO
                     celula.TryGetValue<decimal>(
                         out decimal preco
                     )
-                    &&
-                    preco > 0
                 )
                 {
+                    if (preco <= 0)
+                        continue;
+
                     if (
                         menorPreco == null
                         ||
-                        preco < menorPreco
+                        preco < menorPreco.Value
                     )
                     {
                         menorPreco =
                             preco;
 
-                        fornecedorMenorPreco =
+                        fornecedorMaisBarato =
                             cabecalho;
                     }
                 }
             }
 
+            // =================================================
+            // ESCREVER FORNECEDOR MAIS BARATO
+            // =================================================
+
             if (
                 !string.IsNullOrWhiteSpace(
-                    fornecedorMenorPreco
+                    fornecedorMaisBarato
                 )
             )
             {
@@ -664,7 +791,7 @@ namespace COTACAO_INSUMO
                         colunaFornecedorMaisBarato
                     )
                     .Value =
-                    fornecedorMenorPreco;
+                    fornecedorMaisBarato;
             }
         }
     }
