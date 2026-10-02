@@ -22,6 +22,8 @@ namespace COTACAO_INSUMO
 
         private int timeoutIA = 3600;
 
+        private readonly ConfiguracaoIARepository configuracoesIA = new();
+
         private bool configuracaoIASalva =
             false;
 
@@ -89,6 +91,7 @@ namespace COTACAO_INSUMO
         private string caminhoExcelSelecionado = "";
         private string lojaSelecionada = "";
         private string lojaConsultaSelecionada = "Orlando";
+        private int anoFiltroConsulta = DateTime.Now.Year;
 
         private int mesSelecionado = DateTime.Now.Month;
         private int anoSelecionado = DateTime.Now.Year;
@@ -96,6 +99,16 @@ namespace COTACAO_INSUMO
         private int ultimoTotalInsumosPreenchidos = 0;
         private int ultimoTotalInsumosNaoEncontrados = 0;
 
+        private bool EhColunaFornecedorGrid(DataGridViewColumn coluna)
+        {
+            string titulo = NormalizarCabecalhoGrid(coluna.HeaderText);
+            return !string.IsNullOrWhiteSpace(titulo)
+                && !titulo.StartsWith("INSUMO", StringComparison.Ordinal)
+                && !titulo.Contains("FORNECEDOR ANTERIOR")
+                && !titulo.Contains("FORNECEDOR MAIS EM CONTA")
+                && !titulo.Contains("QUANTIDADE")
+                && titulo != "QTD";
+        }
         private void AtualizarFornecedorMaisBaratoGrid(
       DataGridView dgv,
       int indiceLinha)
@@ -161,7 +174,7 @@ namespace COTACAO_INSUMO
             }
 
             // =========================================================
-            // PRIMEIRA COLUNA QUE PODE SER FORNECEDOR
+            // IDENTIFICAR FORNECEDORES PELO CABEÇALHO
             //
             // No seu Excel:
             //
@@ -174,12 +187,6 @@ namespace COTACAO_INSUMO
             // ...
             // =========================================================
 
-            int primeiraColunaFornecedor =
-                Math.Max(
-                    colunaFornecedorMaisBarato,
-                    colunaQuantidade
-                ) + 1;
-
             decimal? menorValor = null;
 
             string fornecedorMaisBarato = "";
@@ -189,11 +196,14 @@ namespace COTACAO_INSUMO
             // =========================================================
 
             for (
-                int coluna = primeiraColunaFornecedor;
+                int coluna = 0;
                 coluna < dgv.Columns.Count;
                 coluna++
             )
             {
+                if (!EhColunaFornecedorGrid(dgv.Columns[coluna]))
+                    continue;
+
                 string nomeFornecedor =
                     dgv.Columns[coluna]
                         .HeaderText?
@@ -501,6 +511,23 @@ namespace COTACAO_INSUMO
             BackColor = corFundo;
             Font = new Font("Segoe UI", 10F);
 
+            try
+            {
+                ConfiguracaoIA? salva = configuracoesIA.Carregar();
+                if (salva != null)
+                {
+                    provedorIA = salva.Provedor;
+                    modeloIA = salva.Modelo;
+                    apiKeyIA = salva.ChaveApi;
+                    timeoutIA = salva.TimeoutSegundos;
+                    configuracaoIASalva = true;
+                }
+            }
+            catch (Exception)
+            {
+                MessageBox.Show("Não foi possível carregar as configurações salvas. Acesse Configurações para configurá-las novamente.",
+                    "Configurações", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             MontarBase();
             AbrirTelaInicio();
         }
@@ -634,6 +661,8 @@ namespace COTACAO_INSUMO
         private void LimparConteudo()
         {
             painelConteudo.Controls.Clear();
+            painelConteudo.AutoScrollPosition = Point.Empty;
+            painelConteudo.AutoScroll = true;
         }
 
         // =========================================================
@@ -656,6 +685,14 @@ namespace COTACAO_INSUMO
             };
         }
 
+        private void AjustarContainerATela(Panel tela)
+        {
+            painelConteudo.AutoScroll = false;
+            tela.Bounds = new Rectangle(25, 20,
+                Math.Max(1, painelConteudo.ClientSize.Width - 50),
+                Math.Max(1, painelConteudo.ClientSize.Height - 40));
+            tela.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        }
         private Panel CriarCard(int largura, int altura)
         {
             return new Panel
@@ -1095,6 +1132,30 @@ namespace COTACAO_INSUMO
                 (s, e) =>
                     AbrirTelaNaoEncontrados();
 
+            AjustarContainerATela(tela);
+            iniciar.Size = new Size(160, 44);
+            consultar.Size = new Size(160, 44);
+            void AjustarLayoutInicio()
+            {
+                int larguraCard = Math.Max(280, (tela.ClientSize.Width - 40) / 2);
+                int alturaCard = Math.Clamp(tela.ClientSize.Height / 4, 170, 210);
+                cardNova.Size = new Size(larguraCard, alturaCard);
+                cardConsulta.Size = cardNova.Size;
+                cardConsulta.Left = cardNova.Right + 20;
+                tituloNova.Location = new Point((cardNova.ClientSize.Width - tituloNova.PreferredSize.Width) / 2, 30);
+                descNova.Location = new Point((cardNova.ClientSize.Width - descNova.PreferredSize.Width) / 2, 68);
+                iniciar.Location = new Point((cardNova.ClientSize.Width - iniciar.Width) / 2, alturaCard - 64);
+                tituloConsulta.Location = new Point((cardConsulta.ClientSize.Width - tituloConsulta.PreferredSize.Width) / 2, 30);
+                descConsulta.Location = new Point((cardConsulta.ClientSize.Width - descConsulta.PreferredSize.Width) / 2, 68);
+                consultar.Location = new Point((cardConsulta.ClientSize.Width - consultar.Width) / 2, alturaCard - 64);
+                acesso.Top = cardNova.Bottom + 30;
+                orlando.Bounds = new Rectangle(10, acesso.Bottom + 15, larguraCard, 48);
+                drugstore.Bounds = new Rectangle(cardConsulta.Left, orlando.Top, larguraCard, 48);
+                naoEncontrados.Bounds = new Rectangle(10, orlando.Bottom + 20,
+                    Math.Max(280, larguraCard), 48);
+            }
+            tela.Resize += (s, e) => AjustarLayoutInicio();
+            AjustarLayoutInicio();
             tela.Controls.Add(titulo);
             tela.Controls.Add(cardNova);
             tela.Controls.Add(cardConsulta);
@@ -1815,6 +1876,23 @@ namespace COTACAO_INSUMO
         await ProcessarCotacaoComIAAsync();
     };
 
+            AjustarContainerATela(tela);
+            void AjustarLayoutNovaCotacao()
+            {
+                int largura = Math.Max(1, tela.ClientSize.Width - 20);
+                cardLoja.Width = Math.Max(410, (largura - 10) / 2);
+                cardExcel.Left = cardLoja.Right + 10;
+                cardExcel.Width = Math.Max(460, largura - cardLoja.Width - 10);
+                cardPdfs.Width = largura;
+                cardPdfs.Height = Math.Max(160, tela.ClientSize.Height - cardPdfs.Top - 76);
+                dgvPdfs.Width = Math.Max(1, cardPdfs.ClientSize.Width - 20);
+                dgvPdfs.Height = Math.Max(45, cardPdfs.ClientSize.Height - 130);
+                selecionarPdfs.Top = dgvPdfs.Bottom + 15;
+                processar.Location = new Point(Math.Max(10, cardPdfs.Right - processar.Width),
+                    cardPdfs.Bottom + 20);
+            }
+            tela.Resize += (s, e) => AjustarLayoutNovaCotacao();
+            AjustarLayoutNovaCotacao();
             tela.Controls.Add(titulo);
             tela.Controls.Add(cardLoja);
             tela.Controls.Add(cardExcel);
@@ -2276,339 +2354,214 @@ namespace COTACAO_INSUMO
 
         private void AbrirTelaConsultar()
         {
-            telaAtual =
-                TelaAtual.Consultar;
-
+            telaAtual = TelaAtual.Consultar;
             LimparConteudo();
             DestacarMenu(btnConsultar);
-
-            Panel tela =
-                CriarContainer(700);
-
-            Label titulo =
-                CriarTitulo(
-                    "Consultar cotações"
-                );
-
-            titulo.Location =
-                new Point(10, 5);
-
-            Button orlando =
-                CriarBotao(
-                    "Orlando",
-                    130,
-                    40
-                );
-
-            orlando.Location =
-                new Point(10, 65);
-
-            Button drugstore =
-                CriarBotao(
-                    "Drugstore",
-                    130,
-                    40
-                );
-
-            drugstore.Location =
-                new Point(150, 65);
-
-            if (
-                lojaConsultaSelecionada ==
-                "Orlando"
-            )
+            Panel tela = CriarContainer(740);
+            Label titulo = CriarTitulo("Consultar cotações");
+            titulo.Location = new Point(10, 5);
+            Button orlando = CriarBotao("Orlando", 130, 40);
+            orlando.Location = new Point(10, 65);
+            Button drugstore = CriarBotao("Drugstore", 130, 40);
+            drugstore.Location = new Point(150, 65);
+            if (lojaConsultaSelecionada == "Orlando")
                 orlando.BackColor = corAzul;
             else
                 drugstore.BackColor = corAzul;
-
-            orlando.Click +=
-                (s, e) =>
-                {
-                    lojaConsultaSelecionada =
-                        "Orlando";
-
-                    AbrirTelaConsultar();
-                };
-
-            drugstore.Click +=
-                (s, e) =>
-                {
-                    lojaConsultaSelecionada =
-                        "Drugstore";
-
-                    AbrirTelaConsultar();
-                };
-
-            Label pasta =
-                new Label
-                {
-                    Text =
-                        "▣ " +
-                        lojaConsultaSelecionada,
-
-                    AutoSize = true,
-
-                    ForeColor =
-                        Color.White,
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            11F,
-                            FontStyle.Bold
-                        ),
-
-                    Location =
-                        new Point(800, 75)
-                };
-
-            DataGridView dgv =
-                CriarGrid();
-
-            dgv.Location =
-                new Point(10, 125);
-
-            dgv.Size =
-                new Size(960, 350);
-
-            dgv.Columns.Add(
-                "Mes",
-                "Mês"
-            );
-
-            dgv.Columns.Add(
-                "Ano",
-                "Ano"
-            );
-
-            dgv.Columns.Add(
-                "Arquivo",
-                "Arquivo"
-            );
-
-            dgv.Columns.Add(
-                "Modificado",
-                "Última modificação"
-            );
-
-            DataGridViewButtonColumn abrirTabela =
-    new DataGridViewButtonColumn
-    {
-        Name =
-            "AbrirTabela",
-
-        HeaderText =
-            "Tabela",
-
-        Text =
-            "Abrir tabela",
-
-        UseColumnTextForButtonValue =
-            true,
-
-        Width =
-            110,
-
-        AutoSizeMode =
-            DataGridViewAutoSizeColumnMode.None
-    };
-
-            dgv.Columns.Add(
-                abrirTabela
-            );
-
-            DataGridViewButtonColumn naoEncontrados =
-                new DataGridViewButtonColumn
-                {
-                    Name = "NaoEncontrados",
-                    HeaderText = "Não encontrados",
-                    Text = "Visualizar",
-                    UseColumnTextForButtonValue = true
-                };
-
-            dgv.Columns.Add(naoEncontrados);
-
-            string pastaEmpresa =
-                ObterPastaEmpresa(
-                    lojaConsultaSelecionada
-                );
-
-            if (Directory.Exists(pastaEmpresa))
+            orlando.Click += (s, e) =>
             {
-                string[] pastas =
-                    Directory.GetDirectories(
-                        pastaEmpresa
-                    );
+                lojaConsultaSelecionada = "Orlando";
+                AbrirTelaConsultar();
+            };
+            drugstore.Click += (s, e) =>
+            {
+                lojaConsultaSelecionada = "Drugstore";
+                AbrirTelaConsultar();
+            };
 
-                foreach (
-                    string pastaPeriodo
-                    in pastas
-                        .OrderByDescending(
-                            x => x
-                        )
-                )
-                {
-                    string nome =
-                        Path.GetFileName(
-                            pastaPeriodo
-                        );
-
-                    string[] partes =
-                        nome.Split('-');
-
-                    if (partes.Length != 2)
-                        continue;
-
-                    if (
-                        !int.TryParse(
-                            partes[0],
-                            out int ano
-                        )
-                    )
-                        continue;
-
-                    if (
-                        !int.TryParse(
-                            partes[1],
-                            out int mes
-                        )
-                    )
-                        continue;
-
-                    string nomeMes =
-                        ObterNomeMes(
-                            mes
-                        );
-
-                    string arquivoCotacao =
-                        Directory
-                            .GetFiles(
-                                pastaPeriodo,
-                                "*.xlsx"
-                            )
-                            .Select(
-                                Path.GetFileName
-                            )
-                            .FirstOrDefault()
-                        ??
-                        "Planilha ainda não gerada";
-
-                    DateTime modificado =
-                        Directory.GetLastWriteTime(
-                            pastaPeriodo
-                        );
-
-                    dgv.Rows.Add(
-                        nomeMes,
-                        ano,
-                        arquivoCotacao,
-                        modificado.ToString(
-                            "dd/MM/yyyy HH:mm"
-                        )
-                    );
-                }
+            Label lblAno = CriarLabelSecao("Ano");
+            lblAno.Location = new Point(10, 120);
+            NumericUpDown campoAno = new NumericUpDown
+            {
+                Location = new Point(10, 148), Width = 110,
+                Minimum = 1900, Maximum = 9999, Value = anoFiltroConsulta,
+                BackColor = Color.FromArgb(25, 25, 25), ForeColor = Color.White,
+                Font = new Font("Segoe UI", 11F)
+            };
+            Button buscar = CriarBotao("Buscar", 130, 36);
+            buscar.Location = new Point(140, 145);
+            buscar.BackColor = corAzul;
+            DataGridView dgv = CriarGrid();
+            dgv.Location = new Point(10, 200);
+            dgv.Size = new Size(960, 350);
+            dgv.Columns.Add("Mes", "Mês");
+            dgv.Columns.Add("Ano", "Ano");
+            dgv.Columns.Add("Arquivo", "Arquivo");
+            dgv.Columns.Add("Modificado", "Última modificação");
+            dgv.Columns.Add(new DataGridViewButtonColumn
+            {
+                Name = "AbrirTabela", HeaderText = "Tabela", Text = "Abrir tabela",
+                UseColumnTextForButtonValue = true, Width = 110,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None
+            });
+            dgv.Columns.Add(new DataGridViewButtonColumn
+            {
+                Name = "NaoEncontrados", HeaderText = "Não encontrados",
+                Text = "Visualizar", UseColumnTextForButtonValue = true
+            });
+            dgv.Columns.Add(new DataGridViewCheckBoxColumn
+            {
+                Name = "Selecionar", HeaderText = "Selecionar", Width = 90,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.None
+            });
+            foreach (DataGridViewColumn coluna in dgv.Columns)
+            {
+                coluna.ReadOnly = coluna.Name != "Selecionar";
+                coluna.SortMode = DataGridViewColumnSortMode.NotSortable;
             }
+            dgv.CurrentCellDirtyStateChanged += (s, e) =>
+            {
+                if (dgv.IsCurrentCellDirty)
+                    dgv.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            };
+            Label vazio = CriarTexto("");
+            vazio.Location = new Point(10, 620);
+            Button selecionarTudo = CriarBotao("Selecionar tudo", 160, 40);
+            selecionarTudo.Location = new Point(10, 565);
+            Button excluir = CriarBotao("Excluir tabela", 160, 40);
+            excluir.Location = new Point(185, 565);
 
-            Label vazio =
-                CriarTexto(
-                    dgv.Rows.Count == 0
-                    ? "Nenhuma cotação encontrada para esta empresa."
-                    : ""
-                );
-
-            vazio.Location =
-                new Point(10, 500);
-            dgv.CellContentClick +=
-                (s, e) =>
+            void CarregarResultados()
+            {
+                dgv.Rows.Clear();
+                string pastaEmpresa = ObterPastaEmpresa(lojaConsultaSelecionada);
+                try
                 {
-                    if (e.RowIndex < 0)
-                        return;
-
-                    string nomeColuna =
-                        dgv.Columns[e.ColumnIndex].Name;
-
-                    string mesTexto =
-                        dgv.Rows[e.RowIndex]
-                            .Cells["Mes"]
-                            .Value?
-                            .ToString()
-                        ?? "";
-
-                    string anoTexto =
-                        dgv.Rows[e.RowIndex]
-                            .Cells["Ano"]
-                            .Value?
-                            .ToString()
-                        ?? "";
-
-                    if (
-                        !int.TryParse(
-                            anoTexto,
-                            out int ano
-                        )
-                    )
+                    if (Directory.Exists(pastaEmpresa))
                     {
-                        return;
+                        foreach (string pastaPeriodo in Directory.GetDirectories(pastaEmpresa)
+                            .OrderByDescending(pasta => Path.GetFileName(pasta)))
+                        {
+                            string[] partes = Path.GetFileName(pastaPeriodo).Split('-');
+                            if (partes.Length != 2
+                                || !int.TryParse(partes[0], out int ano)
+                                || ano != anoFiltroConsulta
+                                || !int.TryParse(partes[1], out int mes)
+                                || mes < 1 || mes > 12)
+                                continue;
+                        string arquivo = Directory.GetFiles(pastaPeriodo, "*.xlsx")
+                            .Where(caminho => !Path.GetFileName(caminho).StartsWith("~$")
+                                && !Path.GetFileName(caminho).StartsWith("temp_"))
+                            .OrderBy(caminho => caminho).Select(Path.GetFileName).FirstOrDefault()
+                            ?? "Planilha ainda não gerada";
+                        int indice = dgv.Rows.Add(ObterNomeMes(mes), ano,
+                            arquivo, Directory.GetLastWriteTime(pastaPeriodo).ToString("dd/MM/yyyy HH:mm"),
+                            "Abrir tabela", "Visualizar", false);
+                        dgv.Rows[indice].Tag = pastaPeriodo;
+                        }
                     }
-
-                    int mes =
-                        ObterNumeroMes(
-                            mesTexto
-                        );
-
-                    if (mes == 0)
-                        return;
-
-                    // =====================================================
-                    // ABRIR TABELA
-                    // =====================================================
-
-                    if (
-                        nomeColuna ==
-                        "AbrirTabela"
-                    )
+                    vazio.Text = dgv.Rows.Count == 0
+                        ? "Nenhuma cotação encontrada para esta empresa e ano." : "";
+                }
+                catch (Exception ex)
+                {
+                    vazio.Text = "Não foi possível consultar as cotações.";
+                    MessageBox.Show("Não foi possível buscar as tabelas.\n\n" + ex.Message,
+                        "Buscar", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                selecionarTudo.Enabled = dgv.Rows.Count > 0;
+                excluir.Enabled = dgv.Rows.Count > 0;
+            }
+            buscar.Click += (s, e) =>
+            {
+                anoFiltroConsulta = (int)campoAno.Value;
+                CarregarResultados();
+            };
+            selecionarTudo.Click += (s, e) =>
+            {
+                dgv.EndEdit();
+                foreach (DataGridViewRow linha in dgv.Rows)
+                    linha.Cells["Selecionar"].Value = true;
+            };
+            excluir.Click += (s, e) =>
+            {
+                dgv.EndEdit();
+                var selecionadas = dgv.Rows.Cast<DataGridViewRow>()
+                    .Where(linha => linha.Cells["Selecionar"].Value is true).ToArray();
+                if (selecionadas.Length == 0)
+                {
+                    MessageBox.Show("Selecione uma tabela para excluir.", "Excluir tabela",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                string periodos = string.Join("\n", selecionadas.Select(linha =>
+                    $"{lojaConsultaSelecionada} - {linha.Cells["Mes"].Value}/{linha.Cells["Ano"].Value}"));
+                if (MessageBox.Show("Enviar os períodos selecionados para a Lixeira?\n\n" + periodos +
+                    "\n\nSerão removidos a planilha e os registros de não encontrados dessas pastas.",
+                    "Excluir tabela", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                    return;
+                var erros = new List<string>();
+                string raizEmpresa = Path.GetFullPath(ObterPastaEmpresa(lojaConsultaSelecionada));
+                foreach (DataGridViewRow linha in selecionadas)
+                {
+                    try
                     {
-                        AbrirTabelaCotacao(
-                            lojaConsultaSelecionada,
-                            mes,
-                            ano
-                        );
-
-                        return;
+                        string destino = Path.GetFullPath((string)linha.Tag!);
+                        if (!string.Equals(Path.GetDirectoryName(destino), raizEmpresa,
+                                StringComparison.OrdinalIgnoreCase)
+                            || Path.GetFileName(destino) != $"{Convert.ToInt32(linha.Cells["Ano"].Value)}-{ObterNumeroMes(Convert.ToString(linha.Cells["Mes"].Value) ?? ""):00}")
+                            throw new InvalidOperationException("Pasta do período inválida.");
+                        if (Directory.Exists(destino))
+                            Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(destino,
+                                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin,
+                                Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
                     }
-
-                    // =====================================================
-                    // NÃO ENCONTRADOS
-                    // =====================================================
-
-                    if (
-                        nomeColuna ==
-                        "NaoEncontrados"
-                    )
+                    catch (Exception ex)
                     {
-                        lojaSelecionada =
-                            lojaConsultaSelecionada;
-
-                        mesSelecionado =
-                            mes;
-
-                        anoSelecionado =
-                            ano;
-
-                        AbrirTelaNaoEncontrados();
+                        erros.Add($"{linha.Cells["Mes"].Value}/{linha.Cells["Ano"].Value}: {ex.Message}");
                     }
-                };
-
-            tela.Controls.Add(titulo);
-            tela.Controls.Add(orlando);
-            tela.Controls.Add(drugstore);
-            tela.Controls.Add(pasta);
-            tela.Controls.Add(dgv);
-            tela.Controls.Add(vazio);
-
+                }
+                CarregarResultados();
+                if (erros.Count > 0)
+                    MessageBox.Show("Não foi possível excluir:\n\n" + string.Join("\n", erros),
+                        "Excluir tabela", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            };
+            dgv.CellContentClick += (s, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0)
+                    return;
+                string coluna = dgv.Columns[e.ColumnIndex].Name;
+                DataGridViewRow linha = dgv.Rows[e.RowIndex];
+                int mes = ObterNumeroMes(Convert.ToString(linha.Cells["Mes"].Value) ?? "");
+                int ano = Convert.ToInt32(linha.Cells["Ano"].Value);
+                if (coluna == "AbrirTabela")
+                    AbrirTabelaCotacao(lojaConsultaSelecionada, mes, ano);
+                else if (coluna == "NaoEncontrados")
+                {
+                    lojaSelecionada = lojaConsultaSelecionada;
+                    mesSelecionado = mes;
+                    anoSelecionado = ano;
+                    AbrirTelaNaoEncontrados();
+                }
+            };
+            AjustarContainerATela(tela);
+            void AjustarLayoutConsulta()
+            {
+                dgv.Width = Math.Max(1, tela.ClientSize.Width - 20);
+                dgv.Height = Math.Max(80, tela.ClientSize.Height - dgv.Top - 100);
+                excluir.Location = new Point(dgv.Right - excluir.Width, dgv.Bottom + 15);
+                selecionarTudo.Location = new Point(excluir.Left - selecionarTudo.Width - 15, excluir.Top);
+                vazio.Top = selecionarTudo.Bottom + 12;
+            }
+            tela.Resize += (s, e) => AjustarLayoutConsulta();
+            AjustarLayoutConsulta();
+            tela.Controls.AddRange(new Control[] { titulo, orlando, drugstore,
+                lblAno, campoAno, buscar, dgv, selecionarTudo, excluir, vazio });
             painelConteudo.Controls.Add(tela);
+            CarregarResultados();
         }
-
         private int ObterNumeroMes(
     string mes)
         {
@@ -3154,6 +3107,24 @@ namespace COTACAO_INSUMO
             // CONTROLES
             // =========================================================
 
+            AjustarContainerATela(tela);
+            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgv.Columns["Insumo"]!.FillWeight = 180;
+            dgv.Columns["Fornecedor"]!.FillWeight = 110;
+            dgv.Columns["Preco"]!.FillWeight = 95;
+            dgv.Columns["Tipo"]!.FillWeight = 70;
+            dgv.Columns["Data"]!.FillWeight = 65;
+            void AjustarLayoutNaoEncontrados()
+            {
+                dgv.Width = Math.Max(1, tela.ClientSize.Width - 20);
+                dgv.Height = Math.Max(80, tela.ClientSize.Height - dgv.Top - 76);
+                btnExcluir.Location = new Point(Math.Max(10, dgv.Right - btnExcluir.Width),
+                    dgv.Bottom + 20);
+                btnSelecionarTudo.Location = new Point(Math.Max(10,
+                    btnExcluir.Left - btnSelecionarTudo.Width - 15), btnExcluir.Top);
+            }
+            tela.Resize += (s, e) => AjustarLayoutNaoEncontrados();
+            AjustarLayoutNaoEncontrados();
             tela.Controls.Add(titulo);
             tela.Controls.Add(subtitulo);
 
@@ -3551,6 +3522,24 @@ namespace COTACAO_INSUMO
 
                 // Cada provedor possui sua própria chave.
                 txtApi.Text = "";
+                try
+                {
+                    ConfiguracaoIA? salva = configuracoesIA.Carregar(provedor);
+                    if (salva != null)
+                    {
+                        if (!cmbModelo.Items.Contains(salva.Modelo))
+                            cmbModelo.Items.Add(salva.Modelo);
+                        cmbModelo.SelectedItem = salva.Modelo;
+                        txtApi.Text = salva.ChaveApi;
+                        numTimeout.Value = Math.Clamp(salva.TimeoutSegundos,
+                            (int)numTimeout.Minimum, (int)numTimeout.Maximum);
+                    }
+                }
+                catch (Exception)
+                {
+                    MessageBox.Show("Não foi possível carregar as configurações deste provedor.",
+                        "Configurações", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
 
                 lblStatus.Text =
                     "Não testado";
@@ -4036,6 +4025,17 @@ namespace COTACAO_INSUMO
                         return;
                     }
 
+                    try
+                    {
+                        configuracoesIA.Salvar(new ConfiguracaoIA(provedor, modelo, chave,
+                            (int)numTimeout.Value));
+                    }
+                    catch (Exception)
+                    {
+                        MessageBox.Show("Não foi possível salvar as configurações no banco. Tente novamente.",
+                            "Configurações", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
                     provedorIA =
                         provedor;
 
@@ -4204,6 +4204,8 @@ namespace COTACAO_INSUMO
             painelTopo.Visible = false;
 
             painelConteudo.Controls.Clear();
+            painelConteudo.AutoScrollPosition = Point.Empty;
+            painelConteudo.AutoScroll = true;
 
             painelConteudo.AutoScroll = false;
 
@@ -4889,8 +4891,7 @@ namespace COTACAO_INSUMO
 
                     if (
                         colunaFornecedorMaisBarato >= 0 &&
-                        e.ColumnIndex >
-                            colunaFornecedorMaisBarato
+                        EhColunaFornecedorGrid(dgv.Columns[e.ColumnIndex])
                     )
                     {
                         try
@@ -4928,7 +4929,61 @@ namespace COTACAO_INSUMO
                 };
 
             // =========================================================
-            // DELETE LIMPA CÉLULAS
+            // Seleção explícita pelo cabeçalho distingue excluir coluna de limpar células.
+            DataGridViewColumn? colunaSelecionada = null;
+            dgv.AllowUserToOrderColumns = true;
+
+            void SelecionarColuna(DataGridViewColumn coluna)
+            {
+                dgv.EndEdit();
+                dgv.ClearSelection();
+                colunaSelecionada = coluna;
+                foreach (DataGridViewRow linha in dgv.Rows)
+                    linha.Cells[coluna.Index].Selected = true;
+                dgv.Focus();
+            }
+
+            void ExcluirColunaSelecionada()
+            {
+                if (colunaSelecionada == null || dgv.Columns.Count <= 1)
+                    return;
+
+                dgv.EndEdit();
+                DataGridViewColumn removida = colunaSelecionada;
+                colunaSelecionada = null;
+                atualizandoAutomaticamente = true;
+                try
+                {
+                    dgv.Columns.Remove(removida);
+                    dgv.ClearSelection();
+                    for (int linha = 0; linha < dgv.Rows.Count; linha++)
+                        AtualizarFornecedorMaisBaratoGrid(dgv, linha);
+                }
+                finally
+                {
+                    atualizandoAutomaticamente = false;
+                }
+                MarcarAlteracao();
+            }
+
+            dgv.ColumnHeaderMouseClick += (s, e) =>
+            {
+                if (e.ColumnIndex >= 0)
+                    SelecionarColuna(dgv.Columns[e.ColumnIndex]);
+            };
+            dgv.CellMouseDown += (s, e) =>
+            {
+                if (e.ColumnIndex < 0)
+                    return;
+                if (e.RowIndex < 0 && e.Button == MouseButtons.Right)
+                    SelecionarColuna(dgv.Columns[e.ColumnIndex]);
+                else if (e.RowIndex >= 0 &&
+                    (e.Button == MouseButtons.Left ||
+                     colunaSelecionada?.Index != e.ColumnIndex))
+                    colunaSelecionada = null;
+            };
+            dgv.ColumnDisplayIndexChanged += (s, e) => MarcarAlteracao();
+            // DELETE EXCLUI A COLUNA SELECIONADA OU LIMPA CÉLULAS
             // =========================================================
 
             dgv.KeyDown +=
@@ -4939,6 +4994,13 @@ namespace COTACAO_INSUMO
                         Keys.Delete
                     )
                     {
+                        if (colunaSelecionada != null)
+                        {
+                            ExcluirColunaSelecionada();
+                            e.Handled = true;
+                            e.SuppressKeyPress = true;
+                            return;
+                        }
                         foreach (
                             DataGridViewCell celula
                             in dgv.SelectedCells
@@ -5153,6 +5215,85 @@ namespace COTACAO_INSUMO
                 removerCor
             );
 
+            ToolStripMenuItem editarTitulo = new ToolStripMenuItem("Editar título da coluna");
+            editarTitulo.Click += (s, e) =>
+            {
+                DataGridViewColumn? coluna = colunaSelecionada;
+                if (coluna == null)
+                    return;
+
+                using Form dialogo = new Form
+                {
+                    Text = "Editar título da coluna",
+                    ClientSize = new Size(440, 145),
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    StartPosition = FormStartPosition.CenterParent,
+                    MaximizeBox = false,
+                    MinimizeBox = false,
+                    ShowInTaskbar = false
+                };
+                Label rotulo = new Label
+                {
+                    Text = "Título da coluna:",
+                    AutoSize = true,
+                    Location = new Point(15, 15)
+                };
+                TextBox campoTitulo = new TextBox
+                {
+                    Text = coluna.HeaderText,
+                    Location = new Point(15, 40),
+                    Width = 410
+                };
+                Button confirmar = new Button
+                {
+                    Text = "Confirmar",
+                    Location = new Point(230, 95),
+                    Size = new Size(95, 30)
+                };
+                Button cancelar = new Button
+                {
+                    Text = "Cancelar",
+                    DialogResult = DialogResult.Cancel,
+                    Location = new Point(330, 95),
+                    Size = new Size(95, 30)
+                };
+                confirmar.Click += (sender, args) =>
+                {
+                    if (string.IsNullOrWhiteSpace(campoTitulo.Text))
+                    {
+                        MessageBox.Show(dialogo, "Informe um título para a coluna.",
+                            "Título da coluna", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        campoTitulo.Focus();
+                        return;
+                    }
+                    dialogo.DialogResult = DialogResult.OK;
+                };
+                dialogo.Controls.AddRange(new Control[] { rotulo, campoTitulo, confirmar, cancelar });
+                dialogo.AcceptButton = confirmar;
+                dialogo.CancelButton = cancelar;
+                dialogo.Shown += (sender, args) =>
+                {
+                    campoTitulo.Focus();
+                    campoTitulo.SelectAll();
+                };
+                if (dialogo.ShowDialog(dgv.FindForm()) == DialogResult.OK)
+                {
+                    string titulo = campoTitulo.Text.Trim();
+                    if (titulo != coluna.HeaderText)
+                    {
+                        coluna.HeaderText = titulo;
+                        MarcarAlteracao();
+                    }
+                }
+            };
+            menu.Items.Add(editarTitulo);
+            menu.Opening += (s, e) => editarTitulo.Enabled = colunaSelecionada != null;
+            ToolStripMenuItem excluirColuna = new ToolStripMenuItem("Excluir coluna");
+            excluirColuna.Click += (s, e) => ExcluirColunaSelecionada();
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(excluirColuna);
+            menu.Opening += (s, e) =>
+                excluirColuna.Enabled = colunaSelecionada != null && dgv.Columns.Count > 1;
             dgv.ContextMenuStrip =
                 menu;
 
@@ -5494,6 +5635,12 @@ namespace COTACAO_INSUMO
                     IXLWorksheet planilha =
                         workbook.Worksheets.First();
 
+                    dgv.EndEdit();
+                    var colunasOrdenadas = dgv.Columns.Cast<DataGridViewColumn>()
+                        .OrderBy(coluna => coluna.DisplayIndex).ToArray();
+                    int ultimaColunaAnterior = planilha.LastColumnUsed()?.ColumnNumber() ?? 0;
+                    if (ultimaColunaAnterior > colunasOrdenadas.Length)
+                        planilha.Columns(colunasOrdenadas.Length + 1, ultimaColunaAnterior).Delete();
                     // =================================================
                     // CABEÇALHOS
                     // =================================================
@@ -5510,8 +5657,7 @@ namespace COTACAO_INSUMO
                                 coluna + 1
                             )
                             .Value =
-                            dgv.Columns[coluna]
-                                .HeaderText;
+                            colunasOrdenadas[coluna].HeaderText;
                     }
 
                     // =================================================
@@ -5532,7 +5678,7 @@ namespace COTACAO_INSUMO
                         {
                             DataGridViewCell celulaGrid =
                                 dgv.Rows[linha]
-                                   .Cells[coluna];
+                                   .Cells[colunasOrdenadas[coluna].Index];
 
                             IXLCell celulaExcel =
                                 planilha.Cell(
@@ -5591,7 +5737,7 @@ namespace COTACAO_INSUMO
                                 celulaExcel.Value =
                                     numero;
 
-                                if (coluna >= 4)
+                                if (EhColunaFornecedorGrid(colunasOrdenadas[coluna]))
                                 {
                                     celulaExcel
                                         .Style
