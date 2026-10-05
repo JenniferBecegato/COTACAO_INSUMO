@@ -4021,9 +4021,9 @@ namespace COTACAO_INSUMO
         }
 
         private void AbrirTabelaCotacao(
-      string empresa,
-      int mes,
-      int ano)
+    string empresa,
+    int mes,
+    int ano)
         {
             string caminho =
                 ObterCaminhoPlanilhaPeriodo(
@@ -4045,16 +4045,13 @@ namespace COTACAO_INSUMO
             }
 
             // =========================================================
-            // ESCONDER MENU E TOPO
+            // ESCONDER MENU LATERAL E TOPO
             // =========================================================
 
             painelMenu.Visible = false;
             painelTopo.Visible = false;
 
             painelConteudo.Controls.Clear();
-            painelConteudo.AutoScrollPosition = Point.Empty;
-            painelConteudo.AutoScroll = true;
-
             painelConteudo.AutoScroll = false;
 
             // =========================================================
@@ -4064,23 +4061,14 @@ namespace COTACAO_INSUMO
             TableLayoutPanel estrutura =
                 new TableLayoutPanel
                 {
-                    Dock =
-                        DockStyle.Fill,
+                    Dock = DockStyle.Fill,
+                    BackColor = corFundo,
 
-                    BackColor =
-                        corFundo,
+                    ColumnCount = 1,
+                    RowCount = 2,
 
-                    ColumnCount =
-                        1,
-
-                    RowCount =
-                        2,
-
-                    Margin =
-                        new Padding(0),
-
-                    Padding =
-                        new Padding(0)
+                    Margin = new Padding(0),
+                    Padding = new Padding(0)
                 };
 
             estrutura.ColumnStyles.Add(
@@ -4109,17 +4097,14 @@ namespace COTACAO_INSUMO
             );
 
             // =========================================================
-            // TOPO DA TABELA
+            // TOPO
             // =========================================================
 
             Panel topo =
                 new Panel
                 {
-                    Dock =
-                        DockStyle.Fill,
-
-                    BackColor =
-                        corTopo
+                    Dock = DockStyle.Fill,
+                    BackColor = corTopo
                 };
 
             estrutura.Controls.Add(
@@ -4154,11 +4139,9 @@ namespace COTACAO_INSUMO
                     Text =
                         $"{empresa} - {ObterNomeMes(mes)}/{ano}",
 
-                    AutoSize =
-                        true,
+                    AutoSize = true,
 
-                    ForeColor =
-                        Color.White,
+                    ForeColor = Color.White,
 
                     Font =
                         new Font(
@@ -4177,8 +4160,7 @@ namespace COTACAO_INSUMO
                     Text =
                         Path.GetFileName(caminho),
 
-                    AutoSize =
-                        true,
+                    AutoSize = true,
 
                     ForeColor =
                         corTextoSecundario,
@@ -4196,14 +4178,11 @@ namespace COTACAO_INSUMO
             Label lblAlteracoes =
                 new Label
                 {
-                    Text =
-                        "",
+                    Text = "",
 
-                    AutoSize =
-                        true,
+                    AutoSize = true,
 
-                    ForeColor =
-                        Color.Gold,
+                    ForeColor = Color.Gold,
 
                     Font =
                         new Font(
@@ -4243,8 +4222,7 @@ namespace COTACAO_INSUMO
             DataGridView dgv =
                 new DataGridView
                 {
-                    Dock =
-                        DockStyle.Fill,
+                    Dock = DockStyle.Fill,
 
                     BackgroundColor =
                         Color.FromArgb(
@@ -4370,15 +4348,17 @@ namespace COTACAO_INSUMO
                 1
             );
 
+            // Força cálculo inicial do layout
+            estrutura.PerformLayout();
+            dgv.PerformLayout();
+
             // =========================================================
-            // CONTROLE DE ALTERAÇÕES
+            // ALTERAÇÕES
             // =========================================================
 
-            bool temAlteracoes =
-                false;
+            bool temAlteracoes = false;
 
-            bool carregandoTabela =
-                true;
+            bool carregandoTabela = true;
 
             bool atualizandoAutomaticamente =
                 false;
@@ -4388,11 +4368,13 @@ namespace COTACAO_INSUMO
                 if (carregandoTabela)
                     return;
 
-                temAlteracoes =
-                    true;
+                temAlteracoes = true;
 
                 lblAlteracoes.Text =
                     "● Alterações não salvas";
+
+                lblAlteracoes.ForeColor =
+                    Color.Gold;
             }
 
             // =========================================================
@@ -4419,11 +4401,8 @@ namespace COTACAO_INSUMO
                         MessageBoxIcon.Information
                     );
 
-                    painelMenu.Visible =
-                        true;
-
-                    painelTopo.Visible =
-                        true;
+                    painelMenu.Visible = true;
+                    painelTopo.Visible = true;
 
                     AbrirTelaConsultar();
 
@@ -4439,6 +4418,76 @@ namespace COTACAO_INSUMO
                     range
                         .LastColumn()
                         .ColumnNumber();
+
+                // =====================================================
+                // CALCULAR LARGURAS
+                // =====================================================
+
+                /*
+                 * Objetivo:
+                 *
+                 * Coluna 1 = Insumo
+                 * Coluna 2 = Fornecedor anterior
+                 * Coluna 3 = Quantidade
+                 * Coluna 4 = Fornecedor mais em conta
+                 *
+                 * Depois:
+                 *
+                 * 13 fornecedores visíveis.
+                 *
+                 * O fornecedor 14 fará o conteúdo ultrapassar
+                 * a largura disponível e será acessado pelo scroll.
+                 */
+
+                int larguraGrid =
+                    painelConteudo.ClientSize.Width;
+
+                if (larguraGrid <= 0)
+                {
+                    larguraGrid =
+                        this.ClientSize.Width;
+                }
+
+                // Um pequeno espaço para bordas e scrollbar vertical
+                larguraGrid -= 30;
+
+                int larguraInsumo =
+                    210;
+
+                int larguraFornecedorAnterior =
+                    90;
+
+                int larguraQuantidade =
+                    90;
+
+                int larguraMaisBarato =
+                    110;
+
+                int larguraColunasFixas =
+                    larguraInsumo
+                    + larguraFornecedorAnterior
+                    + larguraQuantidade
+                    + larguraMaisBarato;
+
+                int espacoFornecedores =
+                    larguraGrid
+                    - larguraColunasFixas;
+
+                // Queremos 13 fornecedores na área disponível
+                int larguraFornecedor =
+                    espacoFornecedores / 13;
+
+                // Segurança para telas menores
+                if (larguraFornecedor < 55)
+                {
+                    larguraFornecedor = 55;
+                }
+
+                // Evita fornecedor ficar grande demais
+                if (larguraFornecedor > 85)
+                {
+                    larguraFornecedor = 85;
+                }
 
                 // =====================================================
                 // CABEÇALHOS
@@ -4480,34 +4529,39 @@ namespace COTACAO_INSUMO
                                 DataGridViewColumnSortMode.NotSortable
                         };
 
-                    // =============================================
+                    // =================================================
                     // LARGURAS
-                    // =============================================
+                    // =================================================
 
                     if (coluna == 1)
                     {
+                        // Nome do insumo
                         novaColuna.Width =
-                            260;
+                            larguraInsumo;
                     }
                     else if (coluna == 2)
                     {
+                        // Fornecedor anterior
                         novaColuna.Width =
-                            130;
+                            larguraFornecedorAnterior;
                     }
                     else if (coluna == 3)
                     {
+                        // Quantidade
                         novaColuna.Width =
-                            125;
+                            larguraQuantidade;
                     }
                     else if (coluna == 4)
                     {
+                        // Fornecedor mais barato
                         novaColuna.Width =
-                            150;
+                            larguraMaisBarato;
                     }
                     else
                     {
+                        // Fornecedores
                         novaColuna.Width =
-                            95;
+                            larguraFornecedor;
                     }
 
                     dgv.Columns.Add(
@@ -4516,7 +4570,7 @@ namespace COTACAO_INSUMO
                 }
 
                 // =====================================================
-                // LINHAS
+                // CARREGAR LINHAS
                 // =====================================================
 
                 for (
@@ -4542,39 +4596,42 @@ namespace COTACAO_INSUMO
                             dgv.Rows[indiceLinha]
                                .Cells[coluna - 1];
 
-                        // =========================================
-                        // VALOR
-                        // =========================================
+                        // =============================================
+                        // VALOR NUMÉRICO
+                        // =============================================
 
                         if (
                             celulaExcel.DataType ==
                             XLDataType.Number
                         )
                         {
-                            decimal valor;
-
                             try
                             {
-                                valor =
+                                decimal valor =
                                     celulaExcel
                                         .GetValue<decimal>();
 
-                                valor =
-                                    Math.Round(
-                                        valor,
-                                        3,
-                                        MidpointRounding.AwayFromZero
-                                    );
-
-                                celulaGrid.Value =
-                                    valor;
-
-                                // Fornecedores geralmente começam
-                                // depois das colunas fixas
+                                // Somente fornecedores
+                                // devem usar 3 casas decimais
                                 if (coluna >= 5)
                                 {
+                                    valor =
+                                        Math.Round(
+                                            valor,
+                                            3,
+                                            MidpointRounding.AwayFromZero
+                                        );
+
+                                    celulaGrid.Value =
+                                        valor;
+
                                     celulaGrid.Style.Format =
                                         "0.000";
+                                }
+                                else
+                                {
+                                    celulaGrid.Value =
+                                        valor;
                                 }
                             }
                             catch
@@ -4591,9 +4648,9 @@ namespace COTACAO_INSUMO
                                     .GetFormattedString();
                         }
 
-                        // =========================================
-                        // COR DO EXCEL
-                        // =========================================
+                        // =============================================
+                        // COR
+                        // =============================================
 
                         try
                         {
@@ -4622,7 +4679,7 @@ namespace COTACAO_INSUMO
                         }
                         catch
                         {
-                            // mantém tema padrão
+                            // mantém cor padrão
                         }
                     }
                 }
@@ -4630,18 +4687,15 @@ namespace COTACAO_INSUMO
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    "Não foi possível abrir a planilha.\n\n" +
-                    ex.Message,
+                    "Não foi possível abrir a planilha.\n\n"
+                    + ex.Message,
                     "Erro",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error
                 );
 
-                painelMenu.Visible =
-                    true;
-
-                painelTopo.Visible =
-                    true;
+                painelMenu.Visible = true;
+                painelTopo.Visible = true;
 
                 AbrirTelaConsultar();
 
@@ -4649,7 +4703,7 @@ namespace COTACAO_INSUMO
             }
 
             // =========================================================
-            // AJUSTAR COLUNA FORNECEDOR MAIS EM CONTA
+            // LOCALIZAR COLUNA "FORNECEDOR MAIS EM CONTA"
             // =========================================================
 
             int ObterColunaFornecedorMaisBarato()
@@ -4660,14 +4714,13 @@ namespace COTACAO_INSUMO
                 )
                 {
                     string cabecalho =
-                        coluna.HeaderText?
-                            .Trim()
-                        ?? "";
+                        NormalizarCabecalhoGrid(
+                            coluna.HeaderText
+                        );
 
                     if (
-                        cabecalho.Equals(
-                            "Fornecedor mais em conta",
-                            StringComparison.OrdinalIgnoreCase
+                        cabecalho.Contains(
+                            "FORNECEDOR MAIS EM CONTA"
                         )
                     )
                     {
@@ -4679,7 +4732,7 @@ namespace COTACAO_INSUMO
             }
 
             // =========================================================
-            // RECALCULAR TODAS AS LINHAS AO ABRIR
+            // RECALCULAR AO ABRIR
             // =========================================================
 
             int colunaMaisBarato =
@@ -4699,20 +4752,14 @@ namespace COTACAO_INSUMO
                 }
             }
 
-            // Terminou o carregamento inicial
-            carregandoTabela =
-                false;
+            carregandoTabela = false;
 
-            // Como o recálculo inicial não deve deixar a tela
-            // marcada como modificada
-            temAlteracoes =
-                false;
+            temAlteracoes = false;
 
-            lblAlteracoes.Text =
-                "";
+            lblAlteracoes.Text = "";
 
             // =========================================================
-            // EDIÇÃO MANUAL
+            // ALTERAÇÃO MANUAL
             // =========================================================
 
             dgv.CellValueChanged +=
@@ -4737,9 +4784,12 @@ namespace COTACAO_INSUMO
                     int colunaFornecedorMaisBarato =
                         ObterColunaFornecedorMaisBarato();
 
+                    /*
+                     * As colunas de fornecedor começam
+                     * depois das 4 colunas fixas.
+                     */
                     if (
-                        colunaFornecedorMaisBarato >= 0 &&
-                        EhColunaFornecedorGrid(dgv.Columns[e.ColumnIndex])
+                        e.ColumnIndex >= 4
                     )
                     {
                         try
@@ -4747,19 +4797,11 @@ namespace COTACAO_INSUMO
                             atualizandoAutomaticamente =
                                 true;
 
-                            // =====================================
-                            // FORMATAR VALOR COM 3 CASAS
-                            // =====================================
-
                             FormatarValorGridTresCasas(
                                 dgv,
                                 e.RowIndex,
                                 e.ColumnIndex
                             );
-
-                            // =====================================
-                            // RECALCULAR FORNECEDOR MAIS BARATO
-                            // =====================================
 
                             AtualizarFornecedorMaisBaratoGrid(
                                 dgv,
@@ -4777,61 +4819,7 @@ namespace COTACAO_INSUMO
                 };
 
             // =========================================================
-            // Seleção explícita pelo cabeçalho distingue excluir coluna de limpar células.
-            DataGridViewColumn? colunaSelecionada = null;
-            dgv.AllowUserToOrderColumns = true;
-
-            void SelecionarColuna(DataGridViewColumn coluna)
-            {
-                dgv.EndEdit();
-                dgv.ClearSelection();
-                colunaSelecionada = coluna;
-                foreach (DataGridViewRow linha in dgv.Rows)
-                    linha.Cells[coluna.Index].Selected = true;
-                dgv.Focus();
-            }
-
-            void ExcluirColunaSelecionada()
-            {
-                if (colunaSelecionada == null || dgv.Columns.Count <= 1)
-                    return;
-
-                dgv.EndEdit();
-                DataGridViewColumn removida = colunaSelecionada;
-                colunaSelecionada = null;
-                atualizandoAutomaticamente = true;
-                try
-                {
-                    dgv.Columns.Remove(removida);
-                    dgv.ClearSelection();
-                    for (int linha = 0; linha < dgv.Rows.Count; linha++)
-                        AtualizarFornecedorMaisBaratoGrid(dgv, linha);
-                }
-                finally
-                {
-                    atualizandoAutomaticamente = false;
-                }
-                MarcarAlteracao();
-            }
-
-            dgv.ColumnHeaderMouseClick += (s, e) =>
-            {
-                if (e.ColumnIndex >= 0)
-                    SelecionarColuna(dgv.Columns[e.ColumnIndex]);
-            };
-            dgv.CellMouseDown += (s, e) =>
-            {
-                if (e.ColumnIndex < 0)
-                    return;
-                if (e.RowIndex < 0 && e.Button == MouseButtons.Right)
-                    SelecionarColuna(dgv.Columns[e.ColumnIndex]);
-                else if (e.RowIndex >= 0 &&
-                    (e.Button == MouseButtons.Left ||
-                     colunaSelecionada?.Index != e.ColumnIndex))
-                    colunaSelecionada = null;
-            };
-            dgv.ColumnDisplayIndexChanged += (s, e) => MarcarAlteracao();
-            // DELETE EXCLUI A COLUNA SELECIONADA OU LIMPA CÉLULAS
+            // DELETE
             // =========================================================
 
             dgv.KeyDown +=
@@ -4842,13 +4830,6 @@ namespace COTACAO_INSUMO
                         Keys.Delete
                     )
                     {
-                        if (colunaSelecionada != null)
-                        {
-                            ExcluirColunaSelecionada();
-                            e.Handled = true;
-                            e.SuppressKeyPress = true;
-                            return;
-                        }
                         foreach (
                             DataGridViewCell celula
                             in dgv.SelectedCells
@@ -4861,13 +4842,12 @@ namespace COTACAO_INSUMO
                             }
                         }
 
-                        e.Handled =
-                            true;
+                        e.Handled = true;
                     }
                 };
 
             // =========================================================
-            // MENU DE CONTEXTO / PINTAR
+            // MENU DE CORES
             // =========================================================
 
             ContextMenuStrip menu =
@@ -5063,85 +5043,6 @@ namespace COTACAO_INSUMO
                 removerCor
             );
 
-            ToolStripMenuItem editarTitulo = new ToolStripMenuItem("Editar título da coluna");
-            editarTitulo.Click += (s, e) =>
-            {
-                DataGridViewColumn? coluna = colunaSelecionada;
-                if (coluna == null)
-                    return;
-
-                using Form dialogo = new Form
-                {
-                    Text = "Editar título da coluna",
-                    ClientSize = new Size(440, 145),
-                    FormBorderStyle = FormBorderStyle.FixedDialog,
-                    StartPosition = FormStartPosition.CenterParent,
-                    MaximizeBox = false,
-                    MinimizeBox = false,
-                    ShowInTaskbar = false
-                };
-                Label rotulo = new Label
-                {
-                    Text = "Título da coluna:",
-                    AutoSize = true,
-                    Location = new Point(15, 15)
-                };
-                TextBox campoTitulo = new TextBox
-                {
-                    Text = coluna.HeaderText,
-                    Location = new Point(15, 40),
-                    Width = 410
-                };
-                Button confirmar = new Button
-                {
-                    Text = "Confirmar",
-                    Location = new Point(230, 95),
-                    Size = new Size(95, 30)
-                };
-                Button cancelar = new Button
-                {
-                    Text = "Cancelar",
-                    DialogResult = DialogResult.Cancel,
-                    Location = new Point(330, 95),
-                    Size = new Size(95, 30)
-                };
-                confirmar.Click += (sender, args) =>
-                {
-                    if (string.IsNullOrWhiteSpace(campoTitulo.Text))
-                    {
-                        MessageBox.Show(dialogo, "Informe um título para a coluna.",
-                            "Título da coluna", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        campoTitulo.Focus();
-                        return;
-                    }
-                    dialogo.DialogResult = DialogResult.OK;
-                };
-                dialogo.Controls.AddRange(new Control[] { rotulo, campoTitulo, confirmar, cancelar });
-                dialogo.AcceptButton = confirmar;
-                dialogo.CancelButton = cancelar;
-                dialogo.Shown += (sender, args) =>
-                {
-                    campoTitulo.Focus();
-                    campoTitulo.SelectAll();
-                };
-                if (dialogo.ShowDialog(dgv.FindForm()) == DialogResult.OK)
-                {
-                    string titulo = campoTitulo.Text.Trim();
-                    if (titulo != coluna.HeaderText)
-                    {
-                        coluna.HeaderText = titulo;
-                        MarcarAlteracao();
-                    }
-                }
-            };
-            menu.Items.Add(editarTitulo);
-            menu.Opening += (s, e) => editarTitulo.Enabled = colunaSelecionada != null;
-            ToolStripMenuItem excluirColuna = new ToolStripMenuItem("Excluir coluna");
-            excluirColuna.Click += (s, e) => ExcluirColunaSelecionada();
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(excluirColuna);
-            menu.Opening += (s, e) =>
-                excluirColuna.Enabled = colunaSelecionada != null && dgv.Columns.Count > 1;
             dgv.ContextMenuStrip =
                 menu;
 
@@ -5154,8 +5055,10 @@ namespace COTACAO_INSUMO
                 {
                     if (
                         e.Button !=
-                            MouseButtons.Right ||
-                        e.RowIndex < 0 ||
+                        MouseButtons.Right
+                        ||
+                        e.RowIndex < 0
+                        ||
                         e.ColumnIndex < 0
                     )
                     {
@@ -5166,8 +5069,6 @@ namespace COTACAO_INSUMO
                         dgv.Rows[e.RowIndex]
                            .Cells[e.ColumnIndex];
 
-                    // Se a célula clicada não estiver entre
-                    // as selecionadas, seleciona apenas ela.
                     if (!clicada.Selected)
                     {
                         dgv.ClearSelection();
@@ -5194,8 +5095,7 @@ namespace COTACAO_INSUMO
                             caminho
                         );
 
-                        temAlteracoes =
-                            false;
+                        temAlteracoes = false;
 
                         lblAlteracoes.Text =
                             "✓ Alterações salvas";
@@ -5206,8 +5106,8 @@ namespace COTACAO_INSUMO
                     catch (Exception ex)
                     {
                         MessageBox.Show(
-                            "Não foi possível salvar a planilha.\n\n" +
-                            ex.Message,
+                            "Não foi possível salvar a planilha.\n\n"
+                            + ex.Message,
                             "Erro ao salvar",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Error
@@ -5226,8 +5126,8 @@ namespace COTACAO_INSUMO
                     {
                         DialogResult resposta =
                             MessageBox.Show(
-                                "Existem alterações que ainda não foram salvas.\n\n" +
-                                "Deseja salvar antes de voltar?",
+                                "Existem alterações que ainda não foram salvas.\n\n"
+                                + "Deseja salvar antes de voltar?",
                                 "Alterações não salvas",
                                 MessageBoxButtons.YesNoCancel,
                                 MessageBoxIcon.Question
@@ -5256,8 +5156,8 @@ namespace COTACAO_INSUMO
                             catch (Exception ex)
                             {
                                 MessageBox.Show(
-                                    "Não foi possível salvar a planilha.\n\n" +
-                                    ex.Message,
+                                    "Não foi possível salvar a planilha.\n\n"
+                                    + ex.Message,
                                     "Erro ao salvar",
                                     MessageBoxButtons.OK,
                                     MessageBoxIcon.Error
@@ -5268,11 +5168,8 @@ namespace COTACAO_INSUMO
                         }
                     }
 
-                    painelMenu.Visible =
-                        true;
-
-                    painelTopo.Visible =
-                        true;
+                    painelMenu.Visible = true;
+                    painelTopo.Visible = true;
 
                     painelConteudo.AutoScroll =
                         true;
@@ -5281,12 +5178,7 @@ namespace COTACAO_INSUMO
                 };
         }
 
-        private void AdicionarCorMenu(
-    ToolStripMenuItem menuPai,
-    DataGridView dgv,
-    string nome,
-    Color cor,
-    Action aoAlterar)
+        private void AdicionarCorMenu(ToolStripMenuItem menuPai,DataGridView dgv,string nome,Color cor,Action aoAlterar)
         {
             ToolStripMenuItem item =
                 new ToolStripMenuItem();
