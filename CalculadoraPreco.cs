@@ -1,379 +1,70 @@
-﻿using System;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace COTACAO_INSUMO
+namespace COTACAO_INSUMO;
+
+public static class CalculadoraPreco
 {
-    public static class CalculadoraPreco
+    // Reconhece somente a unidade e a embalagem explícitas, nunca o nome do produto.
+    public static ResultadoPreco Calcular(string unidadeOriginal, decimal quantidade,
+        decimal valorTotal, decimal valorUnitario)
     {
-        public static ResultadoPreco Calcular(
-            string unidadeOriginal,
-            decimal quantidade,
-            decimal valorTotal,
-            decimal valorUnitario)
-        {
-            string unidade =
-                (unidadeOriginal ?? "")
-                .Trim()
-                .ToUpperInvariant();
-
-            unidade =
-                unidade.Replace(",", ".");
-
-            // =================================================
-            // TENTAR DESCOBRIR NÚMERO EMBUTIDO NA UNIDADE
-            //
-            // Exemplos:
-            // 250 G
-            // 100 G
-            // 2 KG
-            // 5 MIL
-            // =================================================
-
-            decimal quantidadePorItem =
-                ExtrairQuantidadeDaUnidade(
-                    unidade
-                );
-
-            // Se não houver número:
-            // KG -> 1 KG
-            // G  -> 1 G
-            // MLH -> 1 milheiro
-            if (quantidadePorItem <= 0)
-            {
-                quantidadePorItem =
-                    1m;
-            }
-
-            // =================================================
-            // VALOR A USAR
-            // =================================================
-
-            decimal total =
-                valorTotal;
-
-            // Caso a IA não tenha conseguido obter o total,
-            // tenta quantidade x valor unitário.
-            if (
-                total <= 0 &&
-                valorUnitario > 0
-            )
-            {
-                total =
-                    quantidade > 0
-                        ? quantidade * valorUnitario
-                        : valorUnitario;
-            }
-
-            if (total <= 0)
-            {
-                return NaoIdentificado();
-            }
-
-            decimal qtdLinha =
-                quantidade > 0
-                    ? quantidade
-                    : 1m;
-
-            // =================================================
-            // CÁPSULAS / MILHEIRO
-            // =================================================
-
-            if (
-                unidade.Contains("MLH") ||
-                unidade.Contains("MILHEIRO") ||
-                unidade.Contains("MIL")
-            )
-            {
-                decimal unidadesPorItem;
-
-                // 5 MIL = 5000 cápsulas
-                if (
-                    unidade.Contains("MIL") &&
-                    quantidadePorItem > 1
-                )
-                {
-                    unidadesPorItem =
-                        quantidadePorItem * 1000m;
-                }
-
-                // MLH sem número = 1000 cápsulas
-                else
-                {
-                    unidadesPorItem =
-                        1000m;
-                }
-
-                decimal totalUnidades =
-                    qtdLinha *
-                    unidadesPorItem;
-
-                if (totalUnidades <= 0)
-                    return NaoIdentificado();
-
-                return new ResultadoPreco
-                {
-                    PrecoNormalizado =
-                        total / totalUnidades,
-
-                    TipoPreco =
-                        "UNIDADE",
-
-                    UnidadeReferencia =
-                        "un",
-
-                    PodeConverter =
-                        true
-                };
-            }
-
-            // =================================================
-            // KG
-            // =================================================
-
-            if (
-                unidade.Contains("KG") ||
-                unidade.Contains("QUILO")
-            )
-            {
-                decimal quilos;
-
-                // Exemplo:
-                // Fagron: Qtde 1 / Unidade 2 KG
-                if (
-                    TemNumeroNaUnidade(
-                        unidade
-                    )
-                )
-                {
-                    quilos =
-                        qtdLinha *
-                        quantidadePorItem;
-                }
-
-                // Exemplo:
-                // Sixty: Qtde 0,500 / Unidade KG
-                else
-                {
-                    quilos =
-                        qtdLinha;
-                }
-
-                decimal totalGramas =
-                    quilos * 1000m;
-
-                if (totalGramas <= 0)
-                    return NaoIdentificado();
-
-                return new ResultadoPreco
-                {
-                    PrecoNormalizado =
-                        total / totalGramas,
-
-                    TipoPreco =
-                        "GRAMA",
-
-                    UnidadeReferencia =
-                        "g",
-
-                    PodeConverter =
-                        true
-                };
-            }
-
-            // =================================================
-            // MG
-            // =================================================
-
-            if (
-                Regex.IsMatch(
-                    unidade,
-                    @"\bMG\b"
-                )
-            )
-            {
-                decimal miligramas;
-
-                if (
-                    TemNumeroNaUnidade(
-                        unidade
-                    )
-                )
-                {
-                    miligramas =
-                        qtdLinha *
-                        quantidadePorItem;
-                }
-                else
-                {
-                    miligramas =
-                        qtdLinha;
-                }
-
-                decimal totalGramas =
-                    miligramas / 1000m;
-
-                if (totalGramas <= 0)
-                    return NaoIdentificado();
-
-                return new ResultadoPreco
-                {
-                    PrecoNormalizado =
-                        total / totalGramas,
-
-                    TipoPreco =
-                        "GRAMA",
-
-                    UnidadeReferencia =
-                        "g",
-
-                    PodeConverter =
-                        true
-                };
-            }
-
-            // =================================================
-            // GRAMAS
-            // =================================================
-
-            if (
-                Regex.IsMatch(
-                    unidade,
-                    @"\bG\b"
-                )
-                ||
-                unidade.Contains("GR")
-                ||
-                unidade.Contains("GRAMA")
-            )
-            {
-                decimal totalGramas;
-
-                // Fagron:
-                // qtd 1
-                // unidade 250 G
-                if (
-                    TemNumeroNaUnidade(
-                        unidade
-                    )
-                )
-                {
-                    totalGramas =
-                        qtdLinha *
-                        quantidadePorItem;
-                }
-
-                // Outro fornecedor:
-                // qtd 250
-                // unidade G
-                else
-                {
-                    totalGramas =
-                        qtdLinha;
-                }
-
-                if (totalGramas <= 0)
-                    return NaoIdentificado();
-
-                return new ResultadoPreco
-                {
-                    PrecoNormalizado =
-                        total / totalGramas,
-
-                    TipoPreco =
-                        "GRAMA",
-
-                    UnidadeReferencia =
-                        "g",
-
-                    PodeConverter =
-                        true
-                };
-            }
-
-            // =================================================
-            // NÃO CONHECIDO
-            // =================================================
-
+        if (quantidade <= 0 || valorTotal < 0 || valorUnitario < 0)
             return NaoIdentificado();
-        }
 
-        // =====================================================
-        // EXTRAIR QUANTIDADE
-        //
-        // "250 G" -> 250
-        // "2 KG"  -> 2
-        // "5 MIL" -> 5
-        // =====================================================
+        string unidade = (unidadeOriginal ?? "").Trim().ToUpperInvariant();
+        Match match = Regex.Match(unidade,
+            @"^(?:(\d+(?:[.,]\d+)?)\s*)?(KG|QUILO[S]?|QUILOGRAMA[S]?|G|GR|GRS|GRAMA[S]?|MG|MILIGRAMA[S]?|ML|MILILITRO[S]?|L|LT|LITRO[S]?|MLH|MIL|MILHEIRO[S]?|UN|UND|UNID|UNIDADE[S]?|CAP|CAPS|CÁPSULA[S]?|CAPSULA[S]?)\.?$",
+            RegexOptions.CultureInvariant);
+        if (!match.Success) return NaoIdentificado();
 
-        private static decimal ExtrairQuantidadeDaUnidade(
-            string unidade)
-        {
-            Match match =
-                Regex.Match(
-                    unidade,
-                    @"(\d+(?:[.,]\d+)?)"
-                );
+        decimal embalagem = 1m;
+        if (match.Groups[1].Success &&
+            (!decimal.TryParse(match.Groups[1].Value.Replace(',', '.'),
+                NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out embalagem) || embalagem <= 0))
+            return NaoIdentificado();
 
-            if (!match.Success)
-                return 0m;
+        string medida = match.Groups[2].Value;
+        decimal fator;
+        string tipo, referencia;
+        if (medida is "KG" || medida.StartsWith("QUILO"))
+            (fator, tipo, referencia) = (1000m, "GRAMA", "g");
+        else if (medida is "MG" || medida.StartsWith("MILIGRAMA"))
+            (fator, tipo, referencia) = (0.001m, "GRAMA", "g");
+        else if (medida is "G" or "GR" or "GRS" || medida.StartsWith("GRAMA"))
+            (fator, tipo, referencia) = (1m, "GRAMA", "g");
+        else if (medida is "ML" || medida.StartsWith("MILILITRO"))
+            (fator, tipo, referencia) = (1m, "MILILITRO", "ml");
+        else if (medida is "L" or "LT" || medida.StartsWith("LITRO"))
+            (fator, tipo, referencia) = (1000m, "MILILITRO", "ml");
+        else if (medida is "MLH" or "MIL" || medida.StartsWith("MILHEIRO"))
+            (fator, tipo, referencia) = (1000m, "UNIDADE", "un");
+        else
+            (fator, tipo, referencia) = (1m, "UNIDADE", "un");
 
-            string numero =
-                match.Groups[1]
-                    .Value
-                    .Replace(",", ".");
+        decimal total = valorTotal > 0 ? valorTotal : quantidade * valorUnitario;
+        if (total <= 0) return NaoIdentificado();
+        // Total e unitário incompatíveis indicam leitura ambígua da linha.
+        if (valorTotal > 0 && valorUnitario > 0 &&
+            Math.Abs(valorTotal - quantidade * valorUnitario) > 0.02m)
+            return NaoIdentificado();
 
-            if (
-                decimal.TryParse(
-                    numero,
-                    NumberStyles.Any,
-                    CultureInfo.InvariantCulture,
-                    out decimal valor
-                )
-            )
-            {
-                return valor;
-            }
-
-            return 0m;
-        }
-
-        private static bool TemNumeroNaUnidade(
-            string unidade)
-        {
-            return Regex.IsMatch(
-                unidade,
-                @"\d"
-            );
-        }
-
-        private static ResultadoPreco NaoIdentificado()
-        {
-            return new ResultadoPreco
-            {
-                PrecoNormalizado =
-                    0m,
-
-                TipoPreco =
-                    "NAO_IDENTIFICADO",
-
-                UnidadeReferencia =
-                    "",
-
-                PodeConverter =
-                    false
-            };
-        }
+        decimal preco = total / (quantidade * embalagem * fator);
+        if (preco <= 0) return NaoIdentificado();
+        return new ResultadoPreco { PrecoNormalizado = preco, TipoPreco = tipo,
+            UnidadeReferencia = referencia, PodeConverter = true };
     }
 
-    public class ResultadoPreco
+    private static ResultadoPreco NaoIdentificado() => new()
     {
-        public decimal PrecoNormalizado { get; set; }
+        TipoPreco = "NAO_IDENTIFICADO", PodeConverter = false
+    };
+}
 
-        public string TipoPreco { get; set; } = "";
-
-        public string UnidadeReferencia { get; set; } = "";
-
-        public bool PodeConverter { get; set; }
-    }
+public class ResultadoPreco
+{
+    public decimal PrecoNormalizado { get; set; }
+    public string TipoPreco { get; set; } = "";
+    public string UnidadeReferencia { get; set; } = "";
+    public bool PodeConverter { get; set; }
 }

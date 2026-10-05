@@ -1,4 +1,4 @@
-﻿using ClosedXML.Excel;
+using ClosedXML.Excel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -208,15 +208,11 @@ namespace COTACAO_INSUMO
             }
 
             // -------------------------------------------------
-            // PREÇO COM 5 CASAS DECIMAIS
+            // PRESERVAR PRECISÃO DO PREÇO
             // -------------------------------------------------
 
             decimal valorArredondado =
-                Math.Round(
-                    preco.PrecoNormalizado,
-                    3,
-                    MidpointRounding.AwayFromZero
-                );
+                preco.PrecoNormalizado;
 
             IXLCell celula =
                 planilha.Cell(
@@ -230,7 +226,7 @@ namespace COTACAO_INSUMO
             celula.Style
                 .NumberFormat
                 .Format =
-                "0.000";
+                "0.000#########################";
 
             // -------------------------------------------------
             // ATUALIZAR FORNECEDOR MAIS BARATO
@@ -254,11 +250,7 @@ namespace COTACAO_INSUMO
             ItemCotacaoIA item)
         {
             decimal preco =
-                Math.Round(
-                    item.PrecoNormalizado,
-                    3,
-                    MidpointRounding.AwayFromZero
-                );
+                item.PrecoNormalizado;
 
             resultado.NaoEncontrados.Add(
                 new ItemNaoEncontradoProcessado
@@ -792,3 +784,4 @@ namespace COTACAO_INSUMO
         }
     }
 }
+

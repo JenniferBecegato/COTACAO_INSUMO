@@ -69,7 +69,7 @@ public sealed class ConfiguracaoIARepository
         }
     }
 
-    private sealed class Banco : IDisposable
+    internal sealed class Banco : IDisposable
     {
         public IntPtr Handle { get; private set; }
         public Banco(string caminho)
@@ -112,7 +112,7 @@ public sealed class ConfiguracaoIARepository
             if (Handle != IntPtr.Zero) { Native.sqlite3_close(Handle); Handle = IntPtr.Zero; }
         }
     }
-    private sealed class Consulta : IDisposable
+    internal sealed class Consulta : IDisposable
     {
         private readonly Banco banco;
         private IntPtr handle;

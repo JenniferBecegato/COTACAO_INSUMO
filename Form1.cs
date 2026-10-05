@@ -432,74 +432,7 @@ namespace COTACAO_INSUMO
                 "0.000";
         }
 
-        private class ItemNaoEncontrado
-        {
-            public string Loja { get; set; } = "";
-
-            public int Mes { get; set; }
-
-            public int Ano { get; set; }
-
-            public string Fornecedor { get; set; } = "";
-
-            public string Insumo { get; set; } = "";
-
-            public string PrecoPorGrama { get; set; } = "";
-
-            public string TipoPreco { get; set; } = "";
-
-            public string UnidadeOriginal { get; set; } = "";
-
-            public string Data { get; set; } = "";
-        }
-
-        private readonly List<ItemNaoEncontrado> itensNaoEncontrados =
-            new List<ItemNaoEncontrado>
-            {
-                new ItemNaoEncontrado
-                {
-                    Loja = "Drugstore",
-                    Mes = 3,
-                    Ano = 2026,
-                    Fornecedor = "Alfa Química",
-                    Insumo = "Ácido hialurônico",
-                    PrecoPorGrama = "0,4587321",
-                    Data = "30/03"
-                },
-
-                new ItemNaoEncontrado
-                {
-                    Loja = "Drugstore",
-                    Mes = 3,
-                    Ano = 2026,
-                    Fornecedor = "Gama Farma",
-                    Insumo = "Óleo de rícino",
-                    PrecoPorGrama = "0,0231800",
-                    Data = "30/03"
-                },
-
-                new ItemNaoEncontrado
-                {
-                    Loja = "Drugstore",
-                    Mes = 3,
-                    Ano = 2026,
-                    Fornecedor = "Beta Insumos",
-                    Insumo = "Pantenol",
-                    PrecoPorGrama = "0,0894412",
-                    Data = "30/03"
-                },
-
-                new ItemNaoEncontrado
-                {
-                    Loja = "Orlando",
-                    Mes = 9,
-                    Ano = 2026,
-                    Fornecedor = "Fornecedor Orlando",
-                    Insumo = "Insumo de teste",
-                    PrecoPorGrama = "0,0123456789",
-                    Data = "30/09"
-                }
-            };
+        private readonly NaoEncontradosRepository naoEncontradosRepository = new();
 
         public Form1()
         {
@@ -1906,20 +1839,20 @@ namespace COTACAO_INSUMO
         // PROCESSANDO
         // =========================================================
 
-        private void CriarEstruturaPeriodo()
+        private void CriarEstruturaPeriodo(string empresa, int mes, int ano)
         {
             if (
                 string.IsNullOrWhiteSpace(
-                    lojaSelecionada
+                    empresa
                 )
             )
                 return;
 
             string pasta =
                 ObterPastaPeriodo(
-                    lojaSelecionada,
-                    mesSelecionado,
-                    anoSelecionado
+                    empresa,
+                    mes,
+                    ano
                 );
 
             Directory.CreateDirectory(
@@ -2517,6 +2450,9 @@ namespace COTACAO_INSUMO
                                 Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
                                 Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin,
                                 Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+                        naoEncontradosRepository.ExcluirPeriodo(lojaConsultaSelecionada,
+                            ObterNumeroMes(Convert.ToString(linha.Cells["Mes"].Value) ?? ""),
+                            Convert.ToInt32(linha.Cells["Ano"].Value));
                     }
                     catch (Exception ex)
                     {
@@ -2919,37 +2855,22 @@ namespace COTACAO_INSUMO
                 lojaConsultaSelecionada =
                     empresa;
 
-                List<ItemNaoEncontrado> filtrados =
-                    itensNaoEncontrados
-                        .Where(
-                            x =>
-                                x.Loja.Equals(
-                                    empresa,
-                                    StringComparison.OrdinalIgnoreCase
-                                )
-                                &&
-                                x.Mes == mes
-                                &&
-                                x.Ano == ano
-                        )
-                        .ToList();
-
-                foreach (
-                    ItemNaoEncontrado item
-                    in filtrados
-                )
+                try
                 {
-                    dgv.Rows.Add(
-                        item.Fornecedor,
-                        item.Insumo,
-                        item.PrecoPorGrama,
-                        item.TipoPreco,
-                        item.Data,
-                        false
-                    );
+                    foreach (var item in naoEncontradosRepository.Consultar(empresa, mes, ano))
+                    {
+                        int indice = dgv.Rows.Add(item.Fornecedor, item.Insumo,
+                            item.PrecoNormalizado > 0 ? item.PrecoNormalizado.ToString("0.############################") : "Conferir PDF",
+                            item.TipoPreco, item.DataRegistro.ToString("dd/MM"), false);
+                        dgv.Rows[indice].Tag = item.Id;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Não foi possível consultar os insumos.\n\n" + ex.Message,
+                        "Erro na consulta", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
-
             // =========================================================
             // BUSCAR
             // =========================================================
@@ -2967,83 +2888,10 @@ namespace COTACAO_INSUMO
             btnExcluir.Click +=
                 (s, e) =>
                 {
-                    List<ItemNaoEncontrado>
-                        itensParaExcluir =
-                        new List<ItemNaoEncontrado>();
-
-                    string empresa =
-                        cmbEmpresa.SelectedItem?
-                            .ToString()
-                        ?? "";
-
-                    int mes =
-                        cmbMes.SelectedIndex + 1;
-
-                    int ano =
-                        (int)numAno.Value;
-
-                    foreach (
-                        DataGridViewRow linha
-                        in dgv.Rows
-                    )
-                    {
-                        bool marcado =
-                            Convert.ToBoolean(
-                                linha
-                                    .Cells["Selecionar"]
-                                    .Value
-                                ?? false
-                            );
-
-                        if (!marcado)
-                            continue;
-
-                        string fornecedor =
-                            linha
-                                .Cells["Fornecedor"]
-                                .Value?
-                                .ToString()
-                            ?? "";
-
-                        string insumo =
-                            linha
-                                .Cells["Insumo"]
-                                .Value?
-                                .ToString()
-                            ?? "";
-
-                        ItemNaoEncontrado? encontrado =
-                            itensNaoEncontrados
-                                .FirstOrDefault(
-                                    x =>
-                                        x.Loja.Equals(
-                                            empresa,
-                                            StringComparison.OrdinalIgnoreCase
-                                        )
-                                        &&
-                                        x.Mes == mes
-                                        &&
-                                        x.Ano == ano
-                                        &&
-                                        x.Fornecedor.Equals(
-                                            fornecedor,
-                                            StringComparison.OrdinalIgnoreCase
-                                        )
-                                        &&
-                                        x.Insumo.Equals(
-                                            insumo,
-                                            StringComparison.OrdinalIgnoreCase
-                                        )
-                                );
-
-                        if (encontrado != null)
-                        {
-                            itensParaExcluir.Add(
-                                encontrado
-                            );
-                        }
-                    }
-
+                    dgv.EndEdit();
+                    var itensParaExcluir = dgv.Rows.Cast<DataGridViewRow>()
+                        .Where(linha => Convert.ToBoolean(linha.Cells["Selecionar"].Value ?? false))
+                        .Select(linha => (long)linha.Tag!).ToList();
                     if (itensParaExcluir.Count == 0)
                     {
                         MessageBox.Show(
@@ -3072,16 +2920,16 @@ namespace COTACAO_INSUMO
                         return;
                     }
 
-                    foreach (
-                        ItemNaoEncontrado item
-                        in itensParaExcluir
-                    )
+                    try
                     {
-                        itensNaoEncontrados.Remove(
-                            item
-                        );
+                        naoEncontradosRepository.Excluir(itensParaExcluir);
                     }
-
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Não foi possível excluir os insumos.\n\n" + ex.Message,
+                            "Erro na exclusão", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
                     CarregarItens();
                 };
 
@@ -5941,6 +5789,9 @@ namespace COTACAO_INSUMO
 
         private async Task ProcessarCotacaoComIAAsync()
         {
+            string empresaProcessamento = lojaSelecionada;
+            int mesProcessamento = mesSelecionado;
+            int anoProcessamento = anoSelecionado;
             // Faz cópia para evitar modificação da lista
             // enquanto estamos processando.
             List<string> pdfsDoProcessamento =
@@ -5951,9 +5802,9 @@ namespace COTACAO_INSUMO
 
             string caminhoPlanilhaDestino =
                 ObterCaminhoPlanilhaPeriodo(
-                    lojaSelecionada,
-                    mesSelecionado,
-                    anoSelecionado
+                    empresaProcessamento,
+                    mesProcessamento,
+                    anoProcessamento
                 );
 
             // =========================================================
@@ -6083,7 +5934,7 @@ namespace COTACAO_INSUMO
 
                 await Task.Yield();
 
-                CriarEstruturaPeriodo();
+                CriarEstruturaPeriodo(empresaProcessamento, mesProcessamento, anoProcessamento);
 
                 bool planilhaJaExiste =
                     File.Exists(
@@ -6172,9 +6023,8 @@ namespace COTACAO_INSUMO
                 // NÃO ENCONTRADOS
                 // =====================================================
 
-                RegistrarNaoEncontrados(
-                    resultado
-                );
+                naoEncontradosRepository.SalvarLote(empresaProcessamento, mesProcessamento,
+                    anoProcessamento, resultado.NaoEncontrados, DateTime.Now);
 
                 // =====================================================
                 // 5. FINAL
@@ -6231,77 +6081,6 @@ namespace COTACAO_INSUMO
             }
         }
 
-        private void RegistrarNaoEncontrados(ResultadoProcessamento resultado)
-        {
-            foreach (
-                ItemNaoEncontradoProcessado item
-                in resultado.NaoEncontrados
-            )
-            {
-                ItemNaoEncontrado novo =
-                    new ItemNaoEncontrado
-                    {
-                        Loja =
-                            lojaSelecionada,
-
-                        Mes =
-                            mesSelecionado,
-
-                        Ano =
-                            anoSelecionado,
-
-                        Fornecedor =
-                            item.Fornecedor,
-
-                        Insumo =
-                            item.Insumo,
-
-                        PrecoPorGrama =
-                            item.PrecoNormalizado
-                                .ToString(
-                                    "0.############################"
-                                ),
-
-                        TipoPreco =
-                            item.TipoPreco,
-
-                        UnidadeOriginal =
-                            item.UnidadeOriginal,
-
-                        Data =
-                            DateTime.Now.ToString(
-                                "dd/MM"
-                            )
-                    };
-
-                bool jaExiste =
-                    itensNaoEncontrados.Any(
-                        x =>
-                            x.Loja ==
-                                novo.Loja &&
-
-                            x.Mes ==
-                                novo.Mes &&
-
-                            x.Ano ==
-                                novo.Ano &&
-
-                            x.Fornecedor ==
-                                novo.Fornecedor &&
-
-                            x.Insumo ==
-                                novo.Insumo
-                    );
-
-                if (!jaExiste)
-                {
-                    itensNaoEncontrados.Add(
-                        novo
-                    );
-                }
-            }
-        }
-
         private void Form1_Load(
             object sender,
             EventArgs e)
@@ -6309,3 +6088,4 @@ namespace COTACAO_INSUMO
         }
     }
 }
+
