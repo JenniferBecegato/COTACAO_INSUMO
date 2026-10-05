@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -67,6 +67,8 @@ namespace COTACAO_INSUMO
                         "FORNECEDOR NÃO IDENTIFICADO";
                 }
 
+                fornecedor = NormalizarFornecedor(fornecedor);
+
                 int colunaFornecedor =
                     ObterOuCriarColunaFornecedor(
                         planilha,
@@ -98,20 +100,23 @@ namespace COTACAO_INSUMO
         // =====================================================
 
         private void ProcessarItem(
-            IXLWorksheet planilha,
-            int colunaFornecedor,
-            string fornecedor,
-            ItemCotacaoIA item,
-            ResultadoProcessamento resultado)
+     IXLWorksheet planilha,
+     int colunaFornecedor,
+     string fornecedor,
+     ItemCotacaoIA item,
+     ResultadoProcessamento resultado)
         {
-            // Cálculo feito pelo C#, não pela IA
+            // =========================================================
+            // 1. CALCULAR PREÇO NORMALIZADO
+            // =========================================================
+
             ResultadoPreco preco =
-            CalculadoraPreco.Calcular(
-                item.UnidadeOriginal,
-                item.Quantidade,
-                item.ValorTotal,
-                item.ValorUnitario
-            );
+                CalculadoraPreco.Calcular(
+                    item.UnidadeOriginal,
+                    item.Quantidade,
+                    item.ValorTotal,
+                    item.ValorUnitario
+                );
 
             item.PrecoNormalizado =
                 preco.PrecoNormalizado;
@@ -119,9 +124,10 @@ namespace COTACAO_INSUMO
             item.TipoPreco =
                 preco.TipoPreco;
 
-            // -------------------------------------------------
-            // Unidade não reconhecida
-            // -------------------------------------------------
+            // =========================================================
+            // 2. SE NÃO CONSEGUIU CALCULAR O PREÇO
+            //    MANDA PARA NÃO ENCONTRADOS
+            // =========================================================
 
             if (!preco.PodeConverter)
             {
@@ -134,9 +140,13 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // -------------------------------------------------
-            // IA não encontrou correspondência
-            // -------------------------------------------------
+            // =========================================================
+            // 3. SE A IA NÃO ENCONTROU CORRESPONDÊNCIA NO EXCEL
+            //
+            // IMPORTANTE:
+            // o preço já foi calculado acima, então ele será enviado
+            // para "Não encontrados" com o preço correto.
+            // =========================================================
 
             if (!item.Encontrado)
             {
@@ -149,9 +159,9 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // -------------------------------------------------
-            // Confiança baixa
-            // -------------------------------------------------
+            // =========================================================
+            // 4. CONFIANÇA INSUFICIENTE
+            // =========================================================
 
             if (
                 item.Confianca <
@@ -167,9 +177,9 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // -------------------------------------------------
-            // Nome vazio
-            // -------------------------------------------------
+            // =========================================================
+            // 5. NOME DO INSUMO NO EXCEL VAZIO
+            // =========================================================
 
             if (
                 string.IsNullOrWhiteSpace(
@@ -186,9 +196,9 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // -------------------------------------------------
-            // Localizar linha no Excel
-            // -------------------------------------------------
+            // =========================================================
+            // 6. LOCALIZAR LINHA DO INSUMO
+            // =========================================================
 
             int linha =
                 LocalizarLinhaInsumo(
@@ -207,12 +217,20 @@ namespace COTACAO_INSUMO
                 return;
             }
 
-            // -------------------------------------------------
-            // PRESERVAR PRECISÃO DO PREÇO
-            // -------------------------------------------------
+            // =========================================================
+            // 7. ARREDONDAR PARA 3 CASAS DECIMAIS
+            // =========================================================
 
             decimal valorArredondado =
-                preco.PrecoNormalizado;
+                Math.Round(
+                    preco.PrecoNormalizado,
+                    3,
+                    MidpointRounding.AwayFromZero
+                );
+
+            // =========================================================
+            // 8. GRAVAR NA COLUNA DO FORNECEDOR
+            // =========================================================
 
             IXLCell celula =
                 planilha.Cell(
@@ -226,16 +244,20 @@ namespace COTACAO_INSUMO
             celula.Style
                 .NumberFormat
                 .Format =
-                "0.000#########################";
+                "0.000";
 
-            // -------------------------------------------------
-            // ATUALIZAR FORNECEDOR MAIS BARATO
-            // -------------------------------------------------
+            // =========================================================
+            // 9. ATUALIZAR FORNECEDOR MAIS EM CONTA
+            // =========================================================
 
             AtualizarFornecedorMaisBarato(
                 planilha,
                 linha
             );
+
+            // =========================================================
+            // 10. CONTADOR
+            // =========================================================
 
             resultado.TotalPreenchidos++;
         }
@@ -245,12 +267,16 @@ namespace COTACAO_INSUMO
         // =====================================================
 
         private void AdicionarNaoEncontrado(
-            ResultadoProcessamento resultado,
-            string fornecedor,
-            ItemCotacaoIA item)
+    ResultadoProcessamento resultado,
+    string fornecedor,
+    ItemCotacaoIA item)
         {
             decimal preco =
-                item.PrecoNormalizado;
+                Math.Round(
+                    item.PrecoNormalizado,
+                    3,
+                    MidpointRounding.AwayFromZero
+                );
 
             resultado.NaoEncontrados.Add(
                 new ItemNaoEncontradoProcessado
@@ -430,6 +456,10 @@ namespace COTACAO_INSUMO
             // =================================================
             // APELIDOS / NOMES COMERCIAIS
             // =================================================
+
+            string nomeCompacto = System.Text.RegularExpressions.Regex.Replace(nome, @"[^A-Z0-9]", "");
+            if (nomeCompacto.Contains("CAPSUGEL") || nomeCompacto.Contains("I9MAGISTRAL"))
+                return "CAPSUGEL";
 
             if (nome.Contains("SIXTY"))
                 return "SIXTY";

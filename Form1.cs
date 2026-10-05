@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using OpenAI.Responses;
 
 #pragma warning disable OPENAI001
@@ -26,6 +26,8 @@ namespace COTACAO_INSUMO
 
         private bool configuracaoIASalva =
             false;
+
+
 
         private async Task<bool>
         TestarConexaoOpenAIAsync(
@@ -99,9 +101,11 @@ namespace COTACAO_INSUMO
         private int ultimoTotalInsumosPreenchidos = 0;
         private int ultimoTotalInsumosNaoEncontrados = 0;
 
+
+
         private bool EhColunaFornecedorGrid(DataGridViewColumn coluna)
         {
-            string titulo = NormalizarCabecalhoGrid(coluna.HeaderText);
+            string titulo = NormalizarCabecalhoGrid(coluna.Tag as string ?? coluna.HeaderText);
             return !string.IsNullOrWhiteSpace(titulo)
                 && !titulo.StartsWith("INSUMO", StringComparison.Ordinal)
                 && !titulo.Contains("FORNECEDOR ANTERIOR")
@@ -138,7 +142,7 @@ namespace COTACAO_INSUMO
             {
                 string cabecalho =
                     NormalizarCabecalhoGrid(
-                        coluna.HeaderText
+                        coluna.Tag as string ?? coluna.HeaderText
                     );
 
                 if (
@@ -434,8 +438,13 @@ namespace COTACAO_INSUMO
 
         private readonly NaoEncontradosRepository naoEncontradosRepository = new();
 
-        public Form1()
+        public Form1() : this(null)
         {
+        }
+
+        private Form1(string? caminhoConfiguracao)
+        {
+            configuracoesIA = new ConfiguracaoIARepository(caminhoConfiguracao);
             InitializeComponent();
 
             WindowState = FormWindowState.Maximized;
@@ -4044,6 +4053,11 @@ namespace COTACAO_INSUMO
                 return;
             }
 
+            AbrirTabelaCotacaoArquivo(caminho, empresa, mes, ano);
+        }
+
+        private void AbrirTabelaCotacaoArquivo(string caminho, string empresa, int mes, int ano)
+        {
             // =========================================================
             // ESCONDER MENU LATERAL E TOPO
             // =========================================================
@@ -4243,6 +4257,8 @@ namespace COTACAO_INSUMO
                     AllowUserToDeleteRows =
                         false,
 
+                    AllowUserToOrderColumns = true,
+
                     AllowUserToResizeColumns =
                         true,
 
@@ -4250,7 +4266,7 @@ namespace COTACAO_INSUMO
                         false,
 
                     SelectionMode =
-                        DataGridViewSelectionMode.CellSelect,
+                        DataGridViewSelectionMode.ColumnHeaderSelect,
 
                     MultiSelect =
                         true,
@@ -4419,75 +4435,33 @@ namespace COTACAO_INSUMO
                         .LastColumn()
                         .ColumnNumber();
 
+                string[]? papeisColunas = null;
+                var propriedadePapeis = workbook.CustomProperties
+                    .FirstOrDefault(propriedade => propriedade.Name == "CotacaoGridRoles");
+                if (propriedadePapeis?.Value is string papeisJson)
+                {
+                    try
+                    {
+                        papeisColunas = System.Text.Json.JsonSerializer.Deserialize<string[]>(papeisJson);
+                    }
+                    catch (System.Text.Json.JsonException)
+                    {
+                        // Planilhas sem metadados válidos usam os títulos para identificar colunas.
+                    }
+                }
+
+
                 // =====================================================
                 // CALCULAR LARGURAS
                 // =====================================================
 
-                /*
-                 * Objetivo:
-                 *
-                 * Coluna 1 = Insumo
-                 * Coluna 2 = Fornecedor anterior
-                 * Coluna 3 = Quantidade
-                 * Coluna 4 = Fornecedor mais em conta
-                 *
-                 * Depois:
-                 *
-                 * 13 fornecedores visíveis.
-                 *
-                 * O fornecedor 14 fará o conteúdo ultrapassar
-                 * a largura disponível e será acessado pelo scroll.
-                 */
-
-                int larguraGrid =
-                    painelConteudo.ClientSize.Width;
-
-                if (larguraGrid <= 0)
-                {
-                    larguraGrid =
-                        this.ClientSize.Width;
-                }
-
-                // Um pequeno espaço para bordas e scrollbar vertical
-                larguraGrid -= 30;
-
-                int larguraInsumo =
-                    210;
-
-                int larguraFornecedorAnterior =
-                    90;
-
-                int larguraQuantidade =
-                    90;
-
-                int larguraMaisBarato =
-                    110;
-
-                int larguraColunasFixas =
-                    larguraInsumo
-                    + larguraFornecedorAnterior
-                    + larguraQuantidade
-                    + larguraMaisBarato;
-
-                int espacoFornecedores =
-                    larguraGrid
-                    - larguraColunasFixas;
-
-                // Queremos 13 fornecedores na área disponível
-                int larguraFornecedor =
-                    espacoFornecedores / 13;
-
-                // Segurança para telas menores
-                if (larguraFornecedor < 55)
-                {
-                    larguraFornecedor = 55;
-                }
-
-                // Evita fornecedor ficar grande demais
-                if (larguraFornecedor > 85)
-                {
-                    larguraFornecedor = 85;
-                }
+                // Até 17 fornecedores cabem na área disponível.
+                int larguraInsumo = 210;
+                int larguraFornecedorAnterior = 90;
+                int larguraQuantidade = 90;
+                int larguraMaisBarato = 110;
+                int larguraFornecedor = Math.Max(2,
+                    (dgv.ClientSize.Width - 500 - SystemInformation.VerticalScrollBarWidth - 2) / 17);
 
                 // =====================================================
                 // CABEÇALHOS
@@ -4524,6 +4498,10 @@ namespace COTACAO_INSUMO
 
                             HeaderText =
                                 cabecalho,
+
+                            Tag = papeisColunas != null && papeisColunas.Length == ultimaColuna
+                                ? papeisColunas[coluna - 1] : NormalizarCabecalhoGrid(cabecalho),
+                            MinimumWidth = 2,
 
                             SortMode =
                                 DataGridViewColumnSortMode.NotSortable
@@ -4613,7 +4591,7 @@ namespace COTACAO_INSUMO
 
                                 // Somente fornecedores
                                 // devem usar 3 casas decimais
-                                if (coluna >= 5)
+                                if (EhColunaFornecedorGrid(dgv.Columns[coluna - 1]))
                                 {
                                     valor =
                                         Math.Round(
@@ -4715,7 +4693,7 @@ namespace COTACAO_INSUMO
                 {
                     string cabecalho =
                         NormalizarCabecalhoGrid(
-                            coluna.HeaderText
+                            coluna.Tag as string ?? coluna.HeaderText
                         );
 
                     if (
@@ -4784,12 +4762,9 @@ namespace COTACAO_INSUMO
                     int colunaFornecedorMaisBarato =
                         ObterColunaFornecedorMaisBarato();
 
-                    /*
-                     * As colunas de fornecedor começam
-                     * depois das 4 colunas fixas.
-                     */
+                    // Identifica fornecedores pelo papel da coluna, mesmo após mover ou renomear.
                     if (
-                        e.ColumnIndex >= 4
+                        EhColunaFornecedorGrid(dgv.Columns[e.ColumnIndex])
                     )
                     {
                         try
@@ -4822,29 +4797,178 @@ namespace COTACAO_INSUMO
             // DELETE
             // =========================================================
 
-            dgv.KeyDown +=
-                (s, e) =>
-                {
-                    if (
-                        e.KeyCode ==
-                        Keys.Delete
-                    )
-                    {
-                        foreach (
-                            DataGridViewCell celula
-                            in dgv.SelectedCells
-                        )
-                        {
-                            if (!celula.ReadOnly)
-                            {
-                                celula.Value =
-                                    null;
-                            }
-                        }
+            bool ajustandoLarguras = false;
+            bool largurasPersonalizadas = false;
 
-                        e.Handled = true;
+            void AjustarLargurasFornecedores()
+            {
+                // O grid mostra a barra automaticamente quando a largura total não cabe.
+                dgv.ScrollBars = ScrollBars.Both;
+                if (largurasPersonalizadas) return;
+                try
+                {
+                    ajustandoLarguras = true;
+                    var fornecedores = dgv.Columns.Cast<DataGridViewColumn>()
+                        .Where(EhColunaFornecedorGrid).ToArray();
+                    foreach (DataGridViewColumn coluna in dgv.Columns)
+                    {
+                        if (EhColunaFornecedorGrid(coluna)) continue;
+                        string papel = NormalizarCabecalhoGrid(coluna.Tag as string ?? coluna.HeaderText);
+                        coluna.Width = papel.StartsWith("INSUMO", StringComparison.Ordinal) ? 210
+                            : papel.Contains("FORNECEDOR MAIS EM CONTA") ? 110 : 90;
+                    }
+                    int larguraFixa = dgv.Columns.Cast<DataGridViewColumn>()
+                        .Where(coluna => !EhColunaFornecedorGrid(coluna)).Sum(coluna => coluna.Width);
+                    int disponivel = Math.Max(17 * 2, dgv.ClientSize.Width - larguraFixa
+                        - SystemInformation.VerticalScrollBarWidth - 2);
+                    int largura = Math.Max(2, disponivel / 17);
+                    foreach (var coluna in fornecedores)
+                        coluna.Width = largura;
+                }
+                finally
+                {
+                    ajustandoLarguras = false;
+                }
+            }
+
+            void RecalcularFornecedores()
+            {
+                try
+                {
+                    atualizandoAutomaticamente = true;
+                    for (int linha = 0; linha < dgv.Rows.Count; linha++)
+                        AtualizarFornecedorMaisBaratoGrid(dgv, linha);
+                }
+                finally
+                {
+                    atualizandoAutomaticamente = false;
+                }
+            }
+
+            void ApagarColunasSelecionadas()
+            {
+                dgv.EndEdit();
+                var selecionadas = dgv.SelectedColumns.Cast<DataGridViewColumn>().ToArray();
+                if (selecionadas.Length == 0) return;
+                foreach (var coluna in selecionadas)
+                    dgv.Columns.Remove(coluna);
+                RecalcularFornecedores();
+                AjustarLargurasFornecedores();
+                MarcarAlteracao();
+            }
+
+            DataGridViewColumn? colunaMenu = null;
+            ContextMenuStrip menuCabecalho = new ContextMenuStrip();
+            menuCabecalho.Items.Add("Editar título", null, (s, e) =>
+            {
+                if (colunaMenu == null || colunaMenu.DataGridView != dgv) return;
+                using Form dialogo = new Form
+                {
+                    Text = "Editar título da coluna", ClientSize = new Size(420, 120),
+                    StartPosition = FormStartPosition.CenterParent,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    MinimizeBox = false, MaximizeBox = false
+                };
+                TextBox titulo = new TextBox
+                {
+                    Text = colunaMenu.HeaderText, Location = new Point(15, 15), Width = 390
+                };
+                Button salvarTitulo = new Button
+                {
+                    Text = "Salvar", Location = new Point(230, 65), DialogResult = DialogResult.OK
+                };
+                Button cancelar = new Button
+                {
+                    Text = "Cancelar", Location = new Point(320, 65), DialogResult = DialogResult.Cancel
+                };
+                dialogo.Controls.AddRange(new Control[] { titulo, salvarTitulo, cancelar });
+                dialogo.AcceptButton = salvarTitulo;
+                dialogo.CancelButton = cancelar;
+                dialogo.Shown += (sender, args) => { titulo.Focus(); titulo.SelectAll(); };
+                salvarTitulo.Click += (sender, args) =>
+                {
+                    if (string.IsNullOrWhiteSpace(titulo.Text))
+                    {
+                        dialogo.DialogResult = DialogResult.None;
+                        titulo.Focus();
                     }
                 };
+                if (dialogo.ShowDialog(this) != DialogResult.OK) return;
+                colunaMenu.HeaderText = titulo.Text.Trim();
+                RecalcularFornecedores();
+                MarcarAlteracao();
+            });
+            menuCabecalho.Items.Add("Apagar coluna", null, (s, e) => ApagarColunasSelecionadas());
+            ToolStripMenuItem trocarColuna = new ToolStripMenuItem("Trocar de lugar com");
+            menuCabecalho.Items.Add(trocarColuna);
+            menuCabecalho.Opening += (s, e) =>
+            {
+                foreach (ToolStripItem item in trocarColuna.DropDownItems.Cast<ToolStripItem>().ToArray())
+                    item.Dispose();
+                trocarColuna.DropDownItems.Clear();
+                if (colunaMenu == null || colunaMenu.DataGridView != dgv)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                var origem = colunaMenu;
+                foreach (var destino in dgv.Columns.Cast<DataGridViewColumn>()
+                    .OrderBy(coluna => coluna.DisplayIndex).Where(coluna => coluna != origem))
+                {
+                    var opcao = new ToolStripMenuItem($"{destino.DisplayIndex + 1}. {destino.HeaderText}");
+                    opcao.Click += (sender, args) =>
+                    {
+                        if (origem.DataGridView != dgv || destino.DataGridView != dgv) return;
+                        dgv.EndEdit();
+                        int posicaoOrigem = origem.DisplayIndex;
+                        int posicaoDestino = destino.DisplayIndex;
+                        origem.DisplayIndex = posicaoDestino;
+                        destino.DisplayIndex = posicaoOrigem;
+                        dgv.ClearSelection();
+                        origem.Selected = true;
+                        MarcarAlteracao();
+                    };
+                    trocarColuna.DropDownItems.Add(opcao);
+                }
+                trocarColuna.Enabled = trocarColuna.DropDownItems.Count > 0;
+            };
+
+            foreach (DataGridViewColumn coluna in dgv.Columns)
+                coluna.HeaderCell.ContextMenuStrip = menuCabecalho;
+            dgv.CellMouseDown += (s, e) =>
+            {
+                if (e.RowIndex != -1 || e.ColumnIndex < 0) return;
+                if (e.Button == MouseButtons.Right)
+                {
+                    dgv.EndEdit();
+                    dgv.ClearSelection();
+                    colunaMenu = dgv.Columns[e.ColumnIndex];
+                    colunaMenu.Selected = true;
+                    dgv.Focus();
+                }
+            };
+            dgv.ColumnDisplayIndexChanged += (s, e) => MarcarAlteracao();
+            dgv.ColumnWidthChanged += (s, e) =>
+            {
+                if (!ajustandoLarguras)
+                    largurasPersonalizadas = true;
+            };
+            dgv.SizeChanged += (s, e) => AjustarLargurasFornecedores();
+            AjustarLargurasFornecedores();
+
+            dgv.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode != Keys.Delete || dgv.IsCurrentCellInEditMode) return;
+                if (dgv.SelectedColumns.Count > 0)
+                    ApagarColunasSelecionadas();
+                else
+                {
+                    foreach (DataGridViewCell celula in dgv.SelectedCells)
+                        if (!celula.ReadOnly) celula.Value = null;
+                }
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            };
 
             // =========================================================
             // MENU DE CORES
@@ -5042,6 +5166,30 @@ namespace COTACAO_INSUMO
             menu.Items.Add(
                 removerCor
             );
+
+            // O cabeçalho usa a mesma paleta, aplicada à coluna selecionada.
+            ToolStripMenuItem pintarColuna = new ToolStripMenuItem("Pintar coluna");
+            foreach (ToolStripMenuItem opcaoCor in pintar.DropDownItems)
+            {
+                Color cor = (Color)opcaoCor.Tag!;
+                ToolStripMenuItem opcao = new ToolStripMenuItem(opcaoCor.Text)
+                {
+                    Image = opcaoCor.Image == null ? null : (Image)opcaoCor.Image.Clone()
+                };
+                opcao.Click += (s, e) =>
+                {
+                    PintarSelecaoGrid(dgv, cor);
+                    MarcarAlteracao();
+                };
+                pintarColuna.DropDownItems.Add(opcao);
+            }
+            menuCabecalho.Items.Add(new ToolStripSeparator());
+            menuCabecalho.Items.Add(pintarColuna);
+            menuCabecalho.Items.Add("Remover cor", null, (s, e) =>
+            {
+                RemoverCorSelecaoGrid(dgv);
+                MarcarAlteracao();
+            });
 
             dgv.ContextMenuStrip =
                 menu;
@@ -5378,6 +5526,11 @@ namespace COTACAO_INSUMO
                     dgv.EndEdit();
                     var colunasOrdenadas = dgv.Columns.Cast<DataGridViewColumn>()
                         .OrderBy(coluna => coluna.DisplayIndex).ToArray();
+                    workbook.CustomProperties.Delete("CotacaoGridRoles");
+                    workbook.CustomProperties.Add("CotacaoGridRoles",
+                        System.Text.Json.JsonSerializer.Serialize(colunasOrdenadas
+                            .Select(coluna => coluna.Tag as string ?? NormalizarCabecalhoGrid(coluna.HeaderText))
+                            .ToArray()));
                     int ultimaColunaAnterior = planilha.LastColumnUsed()?.ColumnNumber() ?? 0;
                     if (ultimaColunaAnterior > colunasOrdenadas.Length)
                         planilha.Columns(colunasOrdenadas.Length + 1, ultimaColunaAnterior).Delete();
