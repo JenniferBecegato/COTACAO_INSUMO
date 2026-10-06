@@ -7,6 +7,65 @@ namespace COTACAO_INSUMO
 {
     public partial class Form1 : Form
     {
+        private sealed record AcaoHistorico(Action Desfazer, Action Refazer);
+        private readonly List<AcaoHistorico> acoesDesfazer = new();
+        private readonly List<AcaoHistorico> acoesRefazer = new();
+        private HistoricoTabela? historicoTabelaAtivo;
+        private Action? indicarAlteracaoTabela;
+        private bool desfazendo;
+        private bool processamentoEmAndamento;
+        private void RegistrarDesfazer(Action desfazer, Action refazer)
+        {
+            if (desfazendo) return;
+            acoesRefazer.Clear();
+            acoesDesfazer.Add(new(desfazer, refazer));
+            if (acoesDesfazer.Count > 50) acoesDesfazer.RemoveAt(0);
+        }
+        private void DesfazerUltimaAcao() => ExecutarHistorico(false);
+        private void RefazerUltimaAcao() => ExecutarHistorico(true);
+        private void ExecutarHistorico(bool refazer)
+        {
+            historicoTabelaAtivo?.Confirmar();
+            var origem = refazer ? acoesRefazer : acoesDesfazer;
+            var destino = refazer ? acoesDesfazer : acoesRefazer;
+            if (origem.Count == 0) return;
+            try
+            {
+                desfazendo = true;
+                var acao = origem[^1];
+                if (refazer) acao.Refazer(); else acao.Desfazer();
+                origem.RemoveAt(origem.Count - 1);
+                destino.Add(acao);
+            }
+            catch (Exception ex) { MessageBox.Show("Não foi possível " + (refazer ? "refazer" : "desfazer") + ".\n\n" + ex.Message,
+                "Histórico", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            finally { desfazendo = false; }
+        }
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.Z))
+            {
+                if (processamentoEmAndamento) return true;
+                if (historicoTabelaAtivo != null)
+                {
+                    // Cancel the in-progress edit first; committed edits use the application history.
+                    var editor = ActiveControl;
+                    while (editor is ContainerControl container && container.ActiveControl != null) editor = container.ActiveControl;
+                    if (editor is DataGridView grid && grid.IsCurrentCellInEditMode) { grid.CancelEdit(); return true; }
+                }
+                Control? controle = ActiveControl;
+                while (controle is ContainerControl container && container.ActiveControl != null) controle = container.ActiveControl;
+                if (controle is TextBoxBase texto && texto.CanUndo) { texto.Undo(); return true; }
+                DesfazerUltimaAcao(); return true;
+            }
+            if (keyData == (Keys.Control | Keys.Y))
+            {
+                if (processamentoEmAndamento) return true;
+                RefazerUltimaAcao(); return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         // =========================================================
         // CONFIGURAÇÃO DA IA
         // =========================================================
@@ -602,6 +661,8 @@ namespace COTACAO_INSUMO
 
         private void LimparConteudo()
         {
+            historicoTabelaAtivo?.Confirmar();
+            historicoTabelaAtivo = null;
             painelConteudo.Controls.Clear();
             painelConteudo.AutoScrollPosition = Point.Empty;
             painelConteudo.AutoScroll = true;
@@ -2294,6 +2355,32 @@ namespace COTACAO_INSUMO
         // CONSULTAR
         // =========================================================
 
+        private void ExecutarExportacaoPdf(string tipo, string empresa, int mes, int ano,
+            Func<(string[] Cabecalhos, List<string[]> Linhas)> carregar)
+        {
+            try
+            {
+                var dados = carregar();
+                if (dados.Linhas.Count == 0) { MessageBox.Show("Não há dados para exportar neste período.", "Exportar PDF"); return; }
+                using var salvar = new SaveFileDialog { Filter = "Arquivo PDF (*.pdf)|*.pdf", DefaultExt = "pdf",
+                    AddExtension = true, FileName = $"{tipo}_{empresa}_{ano}-{mes:00}.pdf", Title = "Salvar PDF para impressão" };
+                if (salvar.ShowDialog(this) != DialogResult.OK) return;
+                string caminhoPdf = salvar.FileName;
+                byte[]? pdfAnterior = File.Exists(caminhoPdf) ? File.ReadAllBytes(caminhoPdf) : null;
+                RelatorioPdf.Salvar(salvar.FileName, tipo == "Cotacao" ? "Cotação de insumos" : "Insumos não encontrados",
+                    $"{empresa} • {ObterNomeMes(mes)}/{ano}", dados.Cabecalhos, dados.Linhas, todasColunas: tipo == "Cotacao");
+                byte[] pdfDepois = File.ReadAllBytes(caminhoPdf);
+                RegistrarDesfazer(() =>
+                {
+                    if (pdfAnterior == null) { if (File.Exists(caminhoPdf)) File.Delete(caminhoPdf); }
+                    else File.WriteAllBytes(caminhoPdf, pdfAnterior);
+                }, () => File.WriteAllBytes(caminhoPdf, pdfDepois));
+                MessageBox.Show("PDF exportado com sucesso.\n\n" + salvar.FileName, "Exportar PDF");
+            }
+            catch (Exception ex) { MessageBox.Show("Não foi possível exportar o PDF.\n\n" + ex.Message,
+                "Exportar PDF", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
         private void AbrirTelaConsultar()
         {
             telaAtual = TelaAtual.Consultar;
@@ -2373,6 +2460,45 @@ namespace COTACAO_INSUMO
             Button excluir = CriarBotao("Excluir tabela", 160, 40);
             excluir.Location = new Point(185, 565);
 
+            Button exportar = CriarBotao("Exportar PDF", 140, 36);
+            exportar.BackColor = corAzul;
+            exportar.Click += (s, e) =>
+            {
+                var meses = dgv.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow)
+                    .Select(r => Convert.ToString(r.Cells["Mes"].Value) ?? "").ToArray();
+                if (meses.Length == 0) { MessageBox.Show("Nenhuma cotação disponível para exportar.", "Exportar PDF"); return; }
+                using var escolha = new Form { Text = "Exportar cotação em PDF", Size = new Size(390, 190),
+                    StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                    MaximizeBox = false, MinimizeBox = false };
+                var label = new Label { Text = $"{lojaConsultaSelecionada} • {anoFiltroConsulta} — escolha o mês:",
+                    AutoSize = true, Location = new Point(15, 15) };
+                var combo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList,
+                    Location = new Point(15, 45), Width = 340 };
+                combo.Items.AddRange(meses); combo.SelectedIndex = 0;
+                var confirmar = new Button { Text = "Exportar PDF", Location = new Point(225, 85),
+                    Size = new Size(130, 35), DialogResult = DialogResult.OK };
+                escolha.Controls.AddRange(new Control[] { label, combo, confirmar }); escolha.AcceptButton = confirmar;
+                if (escolha.ShowDialog(this) != DialogResult.OK) return;
+                int mes = ObterNumeroMes(combo.Text);
+                ExecutarExportacaoPdf("Cotacao", lojaConsultaSelecionada, mes, anoFiltroConsulta, () =>
+                {
+                    string pasta = ObterPastaPeriodo(lojaConsultaSelecionada, mes, anoFiltroConsulta);
+                    string? caminho = Directory.GetFiles(pasta, "*.xlsx")
+                        .Where(f => !Path.GetFileName(f).StartsWith("~$") && !Path.GetFileName(f).StartsWith("temp_"))
+                        .OrderBy(f => f).FirstOrDefault();
+                    if (caminho == null) throw new InvalidOperationException("A planilha deste mês ainda não foi gerada.");
+                    using var workbook = new XLWorkbook(caminho);
+                    var planilha = workbook.Worksheets.First();
+                    var range = planilha.RangeUsed() ?? throw new InvalidOperationException("A planilha está vazia.");
+                    int primeira = range.FirstRow().RowNumber(), ultima = range.LastRow().RowNumber();
+                    int primeiraColuna = range.FirstColumn().ColumnNumber(), quantidade = range.ColumnCount();
+                    string[] Ler(int linha) => Enumerable.Range(primeiraColuna, quantidade)
+                        .Select(c => planilha.Cell(linha, c).GetFormattedString()).ToArray();
+                    return (Ler(primeira), Enumerable.Range(primeira + 1, ultima - primeira)
+                        .Select(Ler).Where(r => r.Any(v => !string.IsNullOrWhiteSpace(v))).ToList());
+                });
+            };
+
             void CarregarResultados()
             {
                 dgv.Rows.Clear();
@@ -2444,6 +2570,9 @@ namespace COTACAO_INSUMO
                     MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                     return;
                 var erros = new List<string>();
+                var periodosRemovidos = new List<(string Pasta, Dictionary<string, byte[]> Arquivos, List<ItemNaoEncontradoSalvo> Itens)>();
+                string empresaExcluida = lojaConsultaSelecionada;
+                int anoExcluido = anoFiltroConsulta;
                 string raizEmpresa = Path.GetFullPath(ObterPastaEmpresa(lojaConsultaSelecionada));
                 foreach (DataGridViewRow linha in selecionadas)
                 {
@@ -2454,6 +2583,10 @@ namespace COTACAO_INSUMO
                                 StringComparison.OrdinalIgnoreCase)
                             || Path.GetFileName(destino) != $"{Convert.ToInt32(linha.Cells["Ano"].Value)}-{ObterNumeroMes(Convert.ToString(linha.Cells["Mes"].Value) ?? ""):00}")
                             throw new InvalidOperationException("Pasta do período inválida.");
+                        var arquivosAntes = Directory.Exists(destino) ? Directory.GetFiles(destino, "*", SearchOption.AllDirectories)
+                            .ToDictionary(f => Path.GetRelativePath(destino, f), File.ReadAllBytes) : new Dictionary<string, byte[]>();
+                        var itensAntes = naoEncontradosRepository.Consultar(empresaExcluida,
+                            ObterNumeroMes(Convert.ToString(linha.Cells["Mes"].Value) ?? ""), anoExcluido);
                         if (Directory.Exists(destino))
                             Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(destino,
                                 Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
@@ -2462,12 +2595,52 @@ namespace COTACAO_INSUMO
                         naoEncontradosRepository.ExcluirPeriodo(lojaConsultaSelecionada,
                             ObterNumeroMes(Convert.ToString(linha.Cells["Mes"].Value) ?? ""),
                             Convert.ToInt32(linha.Cells["Ano"].Value));
+                        periodosRemovidos.Add((destino, arquivosAntes, itensAntes));
                     }
                     catch (Exception ex)
                     {
                         erros.Add($"{linha.Cells["Mes"].Value}/{linha.Cells["Ano"].Value}: {ex.Message}");
                     }
                 }
+                if (periodosRemovidos.Count > 0) RegistrarDesfazer(() =>
+                {
+                    if (periodosRemovidos.Any(p => Directory.Exists(p.Pasta)))
+                        throw new IOException("Já existe uma nova cotação no período excluído. Não será sobrescrita.");
+                    var criadas = new List<string>();
+                    try
+                    {
+                        foreach (var periodo in periodosRemovidos)
+                        {
+                            Directory.CreateDirectory(periodo.Pasta); criadas.Add(periodo.Pasta);
+                            foreach (var arquivo in periodo.Arquivos)
+                            {
+                                string destino = Path.Combine(periodo.Pasta, arquivo.Key);
+                                Directory.CreateDirectory(Path.GetDirectoryName(destino)!);
+                                File.WriteAllBytes(destino, arquivo.Value);
+                            }
+                        }
+                        naoEncontradosRepository.Restaurar(periodosRemovidos.SelectMany(p => p.Itens));
+                    }
+                    catch
+                    {
+                        foreach (var pastaCriada in criadas) Directory.Delete(pastaCriada, true);
+                        throw;
+                    }
+                    lojaConsultaSelecionada = empresaExcluida; anoFiltroConsulta = anoExcluido;
+                    AbrirTelaConsultar();
+                }, () =>
+                {
+                    foreach (var periodo in periodosRemovidos)
+                    {
+                        if (Directory.Exists(periodo.Pasta))
+                            Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(periodo.Pasta,
+                                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                                Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                        naoEncontradosRepository.Excluir(periodo.Itens.Select(i => i.Id));
+                    }
+                    lojaConsultaSelecionada = empresaExcluida; anoFiltroConsulta = anoExcluido;
+                    AbrirTelaConsultar();
+                });
                 CarregarResultados();
                 if (erros.Count > 0)
                     MessageBox.Show("Não foi possível excluir:\n\n" + string.Join("\n", erros),
@@ -2494,6 +2667,7 @@ namespace COTACAO_INSUMO
             AjustarContainerATela(tela);
             void AjustarLayoutConsulta()
             {
+                exportar.Location = new Point(Math.Max(300, tela.ClientSize.Width - exportar.Width - 80), 40);
                 dgv.Width = Math.Max(1, tela.ClientSize.Width - 20);
                 dgv.Height = Math.Max(80, tela.ClientSize.Height - dgv.Top - 100);
                 excluir.Location = new Point(dgv.Right - excluir.Width, dgv.Bottom + 15);
@@ -2503,7 +2677,7 @@ namespace COTACAO_INSUMO
             tela.Resize += (s, e) => AjustarLayoutConsulta();
             AjustarLayoutConsulta();
             tela.Controls.AddRange(new Control[] { titulo, orlando, drugstore,
-                lblAno, campoAno, buscar, dgv, selecionarTudo, excluir, vazio });
+                lblAno, campoAno, buscar, exportar, dgv, selecionarTudo, excluir, vazio });
             painelConteudo.Controls.Add(tela);
             CarregarResultados();
         }
@@ -2870,7 +3044,7 @@ namespace COTACAO_INSUMO
                     {
                         int indice = dgv.Rows.Add(item.Fornecedor, item.Insumo,
                             item.PrecoNormalizado > 0 ? item.PrecoNormalizado.ToString("0.############################") : "Conferir PDF",
-                            item.TipoPreco, item.DataRegistro.ToString("dd/MM"), false);
+                            item.TipoPreco == "NAO_IDENTIFICADO" || string.IsNullOrWhiteSpace(item.TipoPreco) ? "Conferir unidade" : item.TipoPreco, item.DataRegistro.ToString("dd/MM"), false);
                         dgv.Rows[indice].Tag = item.Id;
                     }
                 }
@@ -2931,7 +3105,22 @@ namespace COTACAO_INSUMO
 
                     try
                     {
+                        string empresaExcluida = cmbEmpresa.Text;
+                        int mesExcluido = cmbMes.SelectedIndex + 1, anoExcluido = (int)numAno.Value;
+                        var removidos = naoEncontradosRepository.Consultar(empresaExcluida, mesExcluido, anoExcluido)
+                            .Where(i => itensParaExcluir.Contains(i.Id)).ToList();
                         naoEncontradosRepository.Excluir(itensParaExcluir);
+                        RegistrarDesfazer(() =>
+                        {
+                            naoEncontradosRepository.Restaurar(removidos);
+                            lojaSelecionada = empresaExcluida; mesSelecionado = mesExcluido; anoSelecionado = anoExcluido;
+                            AbrirTelaNaoEncontrados();
+                        }, () =>
+                        {
+                            naoEncontradosRepository.Excluir(removidos.Select(i => i.Id));
+                            lojaSelecionada = empresaExcluida; mesSelecionado = mesExcluido; anoSelecionado = anoExcluido;
+                            AbrirTelaNaoEncontrados();
+                        });
                     }
                     catch (Exception ex)
                     {
@@ -2971,8 +3160,25 @@ namespace COTACAO_INSUMO
             dgv.Columns["Preco"]!.FillWeight = 95;
             dgv.Columns["Tipo"]!.FillWeight = 70;
             dgv.Columns["Data"]!.FillWeight = 65;
+            Button exportar = CriarBotao("Exportar PDF", 140, 36);
+            exportar.BackColor = corAzul;
+            exportar.Click += (s, e) =>
+            {
+                string empresa = cmbEmpresa.Text;
+                int mes = cmbMes.SelectedIndex + 1, ano = (int)numAno.Value;
+                ExecutarExportacaoPdf("Nao_encontrados", empresa, mes, ano, () =>
+                {
+                    var itens = naoEncontradosRepository.Consultar(empresa, mes, ano);
+                    return (new[] { "Fornecedor", "Insumo", "Preço normalizado", "Tipo", "Data" },
+                        itens.Select(i => new[] { i.Fornecedor, i.Insumo,
+                            i.PrecoNormalizado > 0 ? i.PrecoNormalizado.ToString("0.############################") : "Conferir PDF",
+                            i.TipoPreco == "NAO_IDENTIFICADO" || string.IsNullOrWhiteSpace(i.TipoPreco) ? "Conferir unidade" : i.TipoPreco, i.DataRegistro.ToString("dd/MM/yyyy") }).ToList());
+                });
+            };
+            tela.Controls.Add(exportar);
             void AjustarLayoutNaoEncontrados()
             {
+                exportar.Location = new Point(Math.Max(300, tela.ClientSize.Width - exportar.Width - 80), 55);
                 dgv.Width = Math.Max(1, tela.ClientSize.Width - 20);
                 dgv.Height = Math.Max(80, tela.ClientSize.Height - dgv.Top - 76);
                 btnExcluir.Location = new Point(Math.Max(10, dgv.Right - btnExcluir.Width),
@@ -3884,8 +4090,28 @@ namespace COTACAO_INSUMO
 
                     try
                     {
+                        var restaurarConfiguracao = configuracoesIA.CapturarRestauracao();
+                        var anterior = configuracoesIA.Carregar();
                         configuracoesIA.Salvar(new ConfiguracaoIA(provedor, modelo, chave,
                             (int)numTimeout.Value));
+                        var refazerConfiguracao = configuracoesIA.CapturarRestauracao();
+                        int timeoutNovo = (int)numTimeout.Value;
+                        RegistrarDesfazer(() =>
+                        {
+                            restaurarConfiguracao();
+                            provedorIA = anterior?.Provedor ?? "OpenAI";
+                            modeloIA = anterior?.Modelo ?? "gpt-5.6-sol";
+                            apiKeyIA = anterior?.ChaveApi ?? "";
+                            timeoutIA = anterior?.TimeoutSegundos ?? 3600;
+                            configuracaoIASalva = anterior != null;
+                            AbrirTelaConfiguracoes();
+                        }, () =>
+                        {
+                            refazerConfiguracao();
+                            provedorIA = provedor; modeloIA = modelo; apiKeyIA = chave; timeoutIA = timeoutNovo;
+                            configuracaoIASalva = true;
+                            AbrirTelaConfiguracoes();
+                        });
                     }
                     catch (Exception)
                     {
@@ -4251,6 +4477,10 @@ namespace COTACAO_INSUMO
                     RowHeadersVisible =
                         false,
 
+                    RowHeadersWidth = 24,
+                    RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
+                    AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
+
                     AllowUserToAddRows =
                         false,
 
@@ -4263,7 +4493,7 @@ namespace COTACAO_INSUMO
                         true,
 
                     AllowUserToResizeRows =
-                        false,
+                        true,
 
                     SelectionMode =
                         DataGridViewSelectionMode.ColumnHeaderSelect,
@@ -4379,10 +4609,12 @@ namespace COTACAO_INSUMO
             bool atualizandoAutomaticamente =
                 false;
 
+            HistoricoTabela? historico = null;
             void MarcarAlteracao()
             {
-                if (carregandoTabela)
+                if (carregandoTabela || historico?.Restaurando == true)
                     return;
+                historico?.Agendar();
 
                 temAlteracoes = true;
 
@@ -4435,6 +4667,11 @@ namespace COTACAO_INSUMO
                         .LastColumn()
                         .ColumnNumber();
 
+                var quantidadeLinhasSalva = workbook.CustomProperties
+                    .FirstOrDefault(p => p.Name == "CotacaoGridRowCount");
+                if (int.TryParse(Convert.ToString(quantidadeLinhasSalva?.Value), out int linhasSalvas) && linhasSalvas >= 0)
+                    ultimaLinha = linhasSalvas + 1;
+
                 string[]? papeisColunas = null;
                 var propriedadePapeis = workbook.CustomProperties
                     .FirstOrDefault(propriedade => propriedade.Name == "CotacaoGridRoles");
@@ -4455,13 +4692,13 @@ namespace COTACAO_INSUMO
                 // CALCULAR LARGURAS
                 // =====================================================
 
-                // Até 17 fornecedores cabem na área disponível.
+                // Até 26 colunas no total cabem na área disponível.
                 int larguraInsumo = 210;
                 int larguraFornecedorAnterior = 90;
                 int larguraQuantidade = 90;
                 int larguraMaisBarato = 110;
                 int larguraFornecedor = Math.Max(2,
-                    (dgv.ClientSize.Width - 500 - SystemInformation.VerticalScrollBarWidth - 2) / 17);
+                    (dgv.ClientSize.Width - 500 - SystemInformation.VerticalScrollBarWidth - 2) / Math.Max(1, Math.Min(ultimaColuna, 26) - 4));
 
                 // =====================================================
                 // CABEÇALHOS
@@ -4744,7 +4981,7 @@ namespace COTACAO_INSUMO
                 (s, e) =>
                 {
                     if (
-                        carregandoTabela ||
+                        carregandoTabela || historico?.Restaurando == true ||
                         atualizandoAutomaticamente
                     )
                     {
@@ -4797,6 +5034,52 @@ namespace COTACAO_INSUMO
             // DELETE
             // =========================================================
 
+            // Resize rows directly at the cell boundary without a row-header gutter.
+            int linhaRedimensionando = -1, inicioArrasteY = 0, alturaInicialLinha = 0;
+            int LinhaNaDivisoria(int x, int y)
+            {
+                var hit = dgv.HitTest(x, y);
+                if (hit.RowIndex < 0 || hit.ColumnIndex < 0) return -1;
+                Rectangle area = dgv.GetCellDisplayRectangle(hit.ColumnIndex, hit.RowIndex, false);
+                if (Math.Abs(y - area.Bottom) <= 4) return hit.RowIndex;
+                if (hit.RowIndex > 0 && Math.Abs(y - area.Top) <= 4) return hit.RowIndex - 1;
+                return -1;
+            }
+            dgv.MouseDown += (s, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                int linha = LinhaNaDivisoria(e.X, e.Y);
+                if (linha < 0) return;
+                dgv.EndEdit();
+                linhaRedimensionando = linha;
+                inicioArrasteY = e.Y;
+                alturaInicialLinha = dgv.Rows[linha].Height;
+                dgv.Capture = true;
+                dgv.Cursor = Cursors.SizeNS;
+            };
+            dgv.MouseMove += (s, e) =>
+            {
+                if (linhaRedimensionando >= 0)
+                {
+                    var linha = dgv.Rows[linhaRedimensionando];
+                    linha.Height = Math.Clamp(alturaInicialLinha + e.Y - inicioArrasteY, linha.MinimumHeight, 2000);
+                    dgv.Cursor = Cursors.SizeNS;
+                }
+                else dgv.Cursor = LinhaNaDivisoria(e.X, e.Y) >= 0 ? Cursors.SizeNS : Cursors.Default;
+            };
+            dgv.MouseUp += (s, e) =>
+            {
+                if (linhaRedimensionando < 0) return;
+                linhaRedimensionando = -1;
+                historico?.Agendar();
+                dgv.Capture = false;
+                dgv.Cursor = Cursors.Default;
+            };
+            dgv.MouseCaptureChanged += (s, e) =>
+            {
+                if (!dgv.Capture) { linhaRedimensionando = -1; dgv.Cursor = Cursors.Default; }
+            };
+
             bool ajustandoLarguras = false;
             bool largurasPersonalizadas = false;
 
@@ -4817,13 +5100,19 @@ namespace COTACAO_INSUMO
                         coluna.Width = papel.StartsWith("INSUMO", StringComparison.Ordinal) ? 210
                             : papel.Contains("FORNECEDOR MAIS EM CONTA") ? 110 : 90;
                     }
-                    int larguraFixa = dgv.Columns.Cast<DataGridViewColumn>()
-                        .Where(coluna => !EhColunaFornecedorGrid(coluna)).Sum(coluna => coluna.Width);
-                    int disponivel = Math.Max(17 * 2, dgv.ClientSize.Width - larguraFixa
+                    var fixas = dgv.Columns.Cast<DataGridViewColumn>()
+                        .Where(coluna => coluna.Visible && !EhColunaFornecedorGrid(coluna)).ToArray();
+                    fornecedores = fornecedores.Where(coluna => coluna.Visible)
+                        .OrderBy(coluna => coluna.DisplayIndex).ToArray();
+                    int quantidadeVisivel = fixas.Length + fornecedores.Length;
+                    int fornecedoresNaTela = Math.Max(1, Math.Min(26, quantidadeVisivel) - fixas.Length);
+                    int larguraFixa = fixas.Sum(coluna => coluna.Width);
+                    int disponivel = Math.Max(fornecedoresNaTela * 2, dgv.ClientSize.Width - larguraFixa
                         - SystemInformation.VerticalScrollBarWidth - 2);
-                    int largura = Math.Max(2, disponivel / 17);
-                    foreach (var coluna in fornecedores)
-                        coluna.Width = largura;
+                    int largura = Math.Max(2, disponivel / fornecedoresNaTela);
+                    int sobra = disponivel % fornecedoresNaTela;
+                    for (int i = 0; i < fornecedores.Length; i++)
+                        fornecedores[i].Width = largura + (i < sobra ? 1 : 0);
                 }
                 finally
                 {
@@ -4898,6 +5187,24 @@ namespace COTACAO_INSUMO
                 RecalcularFornecedores();
                 MarcarAlteracao();
             });
+            var largurasAntesDoAjuste = new Dictionary<DataGridViewColumn, int>();
+            menuCabecalho.Items.Add("Ajustar ao nome da coluna", null, (s, e) =>
+            {
+                if (colunaMenu == null || colunaMenu.DataGridView != dgv) return;
+                largurasPersonalizadas = true;
+                if (largurasAntesDoAjuste.Remove(colunaMenu, out int larguraAnterior))
+                {
+                    colunaMenu.Width = larguraAnterior;
+                }
+                else
+                {
+                    largurasAntesDoAjuste[colunaMenu] = colunaMenu.Width;
+                    var fonte = dgv.ColumnHeadersDefaultCellStyle.Font ?? dgv.Font;
+                    colunaMenu.Width = Math.Max(colunaMenu.MinimumWidth,
+                        TextRenderer.MeasureText(colunaMenu.HeaderText, fonte).Width + 24);
+                }
+                dgv.ScrollBars = ScrollBars.Both;
+            });
             menuCabecalho.Items.Add("Apagar coluna", null, (s, e) => ApagarColunasSelecionadas());
             ToolStripMenuItem trocarColuna = new ToolStripMenuItem("Trocar de lugar com");
             menuCabecalho.Items.Add(trocarColuna);
@@ -4950,10 +5257,13 @@ namespace COTACAO_INSUMO
             dgv.ColumnDisplayIndexChanged += (s, e) => MarcarAlteracao();
             dgv.ColumnWidthChanged += (s, e) =>
             {
-                if (!ajustandoLarguras)
+                if (!ajustandoLarguras && historico?.Restaurando != true)
+                {
                     largurasPersonalizadas = true;
+                    historico?.Agendar();
+                }
             };
-            dgv.SizeChanged += (s, e) => AjustarLargurasFornecedores();
+            dgv.SizeChanged += (s, e) => { AjustarLargurasFornecedores(); historico?.Sincronizar(); };
             AjustarLargurasFornecedores();
 
             dgv.KeyDown += (s, e) =>
@@ -5191,6 +5501,35 @@ namespace COTACAO_INSUMO
                 MarcarAlteracao();
             });
 
+            DataGridViewRow? linhaMenu = null;
+            void InserirLinha(bool abaixo)
+            {
+                dgv.EndEdit();
+                historico?.Confirmar();
+                int indice = linhaMenu?.DataGridView == dgv ? linhaMenu.Index
+                    : dgv.CurrentCell?.RowIndex ?? dgv.Rows.Count;
+                if (abaixo && indice < dgv.Rows.Count) indice++;
+                indice = Math.Clamp(indice, 0, dgv.Rows.Count);
+                dgv.Rows.Insert(indice, 1);
+                dgv.ClearSelection();
+                if (dgv.Columns.Count > 0) dgv.CurrentCell = dgv.Rows[indice].Cells[0];
+                MarcarAlteracao();
+            }
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Inserir linha acima", null, (s, e) => InserirLinha(false));
+            menu.Items.Add("Inserir linha abaixo", null, (s, e) => InserirLinha(true));
+            var apagarLinha = menu.Items.Add("Apagar linha", null, (s, e) =>
+            {
+                var linha = linhaMenu?.DataGridView == dgv ? linhaMenu : dgv.CurrentCell?.OwningRow;
+                if (linha == null || linha.IsNewRow) return;
+                dgv.EndEdit();
+                historico?.Confirmar();
+                dgv.Rows.Remove(linha);
+                linhaMenu = null;
+                MarcarAlteracao();
+            });
+            menu.Opening += (s, e) => apagarLinha.Enabled = dgv.Rows.Count > 0;
+
             dgv.ContextMenuStrip =
                 menu;
 
@@ -5213,6 +5552,7 @@ namespace COTACAO_INSUMO
                         return;
                     }
 
+                    linhaMenu = dgv.Rows[e.RowIndex];
                     DataGridViewCell clicada =
                         dgv.Rows[e.RowIndex]
                            .Cells[e.ColumnIndex];
@@ -5232,6 +5572,27 @@ namespace COTACAO_INSUMO
             // =========================================================
             // SALVAR
             // =========================================================
+
+            historico = new HistoricoTabela(dgv, RegistrarDesfazer, () =>
+            {
+                if (estrutura.Parent != painelConteudo)
+                {
+                    LimparConteudo();
+                    painelMenu.Visible = false; painelTopo.Visible = false;
+                    painelConteudo.AutoScroll = false;
+                    painelConteudo.Controls.Add(estrutura);
+                }
+                historicoTabelaAtivo = historico;
+            }, () =>
+            {
+                largurasPersonalizadas = true;
+                largurasAntesDoAjuste.Clear();
+                temAlteracoes = true;
+                lblAlteracoes.Text = "● Alterações não salvas";
+                lblAlteracoes.ForeColor = Color.Gold;
+            });
+            historicoTabelaAtivo = historico;
+            indicarAlteracaoTabela = () => { temAlteracoes = true; lblAlteracoes.Text = "● Alterações não salvas"; lblAlteracoes.ForeColor = Color.Gold; };
 
             btnSalvar.Click +=
                 (s, e) =>
@@ -5472,6 +5833,9 @@ namespace COTACAO_INSUMO
                 );
             }
 
+            historicoTabelaAtivo?.Confirmar();
+            byte[] arquivoAnterior = File.ReadAllBytes(caminho);
+            var indicarAlteracao = indicarAlteracaoTabela;
             string? pasta =
                 Path.GetDirectoryName(caminho);
 
@@ -5531,6 +5895,11 @@ namespace COTACAO_INSUMO
                         System.Text.Json.JsonSerializer.Serialize(colunasOrdenadas
                             .Select(coluna => coluna.Tag as string ?? NormalizarCabecalhoGrid(coluna.HeaderText))
                             .ToArray()));
+                    workbook.CustomProperties.Delete("CotacaoGridRowCount");
+                    workbook.CustomProperties.Add("CotacaoGridRowCount", dgv.Rows.Count.ToString());
+                    int ultimaLinhaAnterior = planilha.LastRowUsed()?.RowNumber() ?? 1;
+                    if (ultimaLinhaAnterior > dgv.Rows.Count + 1)
+                        planilha.Rows(dgv.Rows.Count + 2, ultimaLinhaAnterior).Delete();
                     int ultimaColunaAnterior = planilha.LastColumnUsed()?.ColumnNumber() ?? 0;
                     if (ultimaColunaAnterior > colunasOrdenadas.Length)
                         planilha.Columns(colunasOrdenadas.Length + 1, ultimaColunaAnterior).Delete();
@@ -5719,6 +6088,16 @@ namespace COTACAO_INSUMO
                         caminho
                     );
                 }
+                byte[] arquivoDepois = File.ReadAllBytes(caminho);
+                RegistrarDesfazer(() =>
+                {
+                    File.WriteAllBytes(caminho, arquivoAnterior);
+                    indicarAlteracao?.Invoke();
+                }, () =>
+                {
+                    File.WriteAllBytes(caminho, arquivoDepois);
+                    indicarAlteracao?.Invoke();
+                });
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -5979,6 +6358,9 @@ namespace COTACAO_INSUMO
 
                 await Task.Yield();
 
+                byte[]? planilhaAntes = File.Exists(caminhoPlanilhaDestino) ? File.ReadAllBytes(caminhoPlanilhaDestino) : null;
+                var itensAntes = naoEncontradosRepository.Consultar(empresaProcessamento, mesProcessamento, anoProcessamento);
+                processamentoEmAndamento = true;
                 CriarEstruturaPeriodo(empresaProcessamento, mesProcessamento, anoProcessamento);
 
                 bool planilhaJaExiste =
@@ -6070,6 +6452,23 @@ namespace COTACAO_INSUMO
 
                 naoEncontradosRepository.SalvarLote(empresaProcessamento, mesProcessamento,
                     anoProcessamento, resultado.NaoEncontrados, DateTime.Now);
+                byte[] planilhaDepois = File.ReadAllBytes(caminhoPlanilhaDestino);
+                var itensDepois = naoEncontradosRepository.Consultar(empresaProcessamento, mesProcessamento, anoProcessamento);
+                RegistrarDesfazer(() =>
+                {
+                    if (planilhaAntes == null) { if (File.Exists(caminhoPlanilhaDestino)) File.Delete(caminhoPlanilhaDestino); }
+                    else File.WriteAllBytes(caminhoPlanilhaDestino, planilhaAntes);
+                    naoEncontradosRepository.Restaurar(itensAntes, empresaProcessamento, mesProcessamento, anoProcessamento);
+                    lojaConsultaSelecionada = empresaProcessamento; anoFiltroConsulta = anoProcessamento;
+                    AbrirTelaConsultar();
+                }, () =>
+                {
+                    File.WriteAllBytes(caminhoPlanilhaDestino, planilhaDepois);
+                    naoEncontradosRepository.Restaurar(itensDepois, empresaProcessamento, mesProcessamento, anoProcessamento);
+                    lojaConsultaSelecionada = empresaProcessamento; anoFiltroConsulta = anoProcessamento;
+                    AbrirTelaConsultar();
+                });
+                processamentoEmAndamento = false;
 
                 // =====================================================
                 // 5. FINAL
@@ -6101,6 +6500,7 @@ namespace COTACAO_INSUMO
             }
             catch (Exception ex)
             {
+                processamentoEmAndamento = false;
                 progresso.Style =
                     ProgressBarStyle.Blocks;
 

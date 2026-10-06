@@ -6,7 +6,21 @@ namespace COTACAO_INSUMO
 {
     public static class CalculadoraPreco
     {
-        public static ResultadoPreco Calcular(
+        public static ResultadoPreco Calcular(string unidadeOriginal, decimal quantidade, decimal valorTotal, decimal valorUnitario)
+        {
+            var resultado = CalcularInterno(unidadeOriginal, quantidade, valorTotal, valorUnitario);
+            if (resultado.PodeConverter) return resultado;
+            string unidade = NormalizarUnidade(unidadeOriginal);
+            if (UnidadeEhMg(unidade) || UnidadeEhKg(unidade) || UnidadeEhGrama(unidade))
+            { resultado.TipoPreco = "GRAMA"; resultado.UnidadeReferencia = "g"; }
+            else if (Regex.IsMatch(unidade, @"^(?:\d+(?:\.\d+)?\s*)?(ML|MILILITROS?|L|LT|LTS|LITROS?)$"))
+            { resultado.TipoPreco = "MILILITRO"; resultado.UnidadeReferencia = "ml"; }
+            else if (UnidadeEhMlh(unidade) || UnidadeEhMil(unidade) || Regex.IsMatch(unidade, @"^(?:\d+(?:\.\d+)?\s*)?(UN|UND|UNID|UNIDADE|UNIDADES)$"))
+            { resultado.TipoPreco = "UNIDADE"; resultado.UnidadeReferencia = "un"; }
+            return resultado;
+        }
+
+        private static ResultadoPreco CalcularInterno(
             string unidadeOriginal,
             decimal quantidade,
             decimal valorTotal,
@@ -26,6 +40,25 @@ namespace COTACAO_INSUMO
                 return NaoIdentificado(
                     "Unidade não informada."
                 );
+            }
+
+            // Recover a missing commercial unit price only from an explicit line total and quantity.
+            if (valorUnitario <= 0 && valorTotal > 0 && quantidade > 0)
+                valorUnitario = valorTotal / quantidade;
+
+            // Liquids retain their volume basis; never assume a density to convert them to grams.
+            if (Regex.IsMatch(unidade, @"^(?:\d+(?:\.\d+)?\s*)?(ML|MILILITROS?|L|LT|LTS|LITROS?)$"))
+            {
+                bool mililitros = Regex.IsMatch(unidade, @"(?:^|\s)(ML|MILILITROS?)$");
+                decimal volume = ExtrairNumero(unidade);
+                if (volume <= 0) volume = 1;
+                decimal divisor = volume * (mililitros ? 1m : 1000m);
+                return CriarResultado(valorUnitario / divisor, "MILILITRO", "ml");
+            }
+            if (Regex.IsMatch(unidade, @"^(?:\d+(?:\.\d+)?\s*)?(UN|UND|UNID|UNIDADE|UNIDADES)$"))
+            {
+                decimal unidades = ExtrairNumero(unidade);
+                return CriarResultado(valorUnitario / (unidades > 0 ? unidades : 1m), "UNIDADE", "un");
             }
 
             // =================================================
@@ -52,9 +85,8 @@ namespace COTACAO_INSUMO
                     );
                 }
 
-                decimal precoPorGrama =
-                    valorUnitario /
-                    1000m;
+                decimal quilosEmbalagem = ExtrairNumero(unidade);
+                decimal precoPorGrama = valorUnitario / ((quilosEmbalagem > 0 ? quilosEmbalagem : 1m) * 1000m);
 
                 return CriarResultado(
                     precoPorGrama,
@@ -413,6 +445,8 @@ namespace COTACAO_INSUMO
                     );
             }
 
+            // Accept compact packaging labels (1KG, 50G, 500MG, 800ML).
+            resultado = Regex.Replace(resultado, @"(?<=\d)(?=[A-Z])", " ");
             return resultado;
         }
 
@@ -502,9 +536,7 @@ namespace COTACAO_INSUMO
                     @"(^|\s)GR($|\s)"
                 )
                 ||
-                unidade.Contains(
-                    "GRAMA"
-                );
+                Regex.IsMatch(unidade, @"(?:^|\s)GRAMAS?(?:$|\s)");
         }
 
         // =====================================================

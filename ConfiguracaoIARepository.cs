@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -67,6 +67,31 @@ public sealed class ConfiguracaoIARepository
             banco.Executar("ROLLBACK;");
             throw;
         }
+    }
+
+    public Action CapturarRestauracao()
+    {
+        var registros = new List<string[]>();
+        using (var banco = new Banco(caminho))
+        using (var consulta = banco.Preparar("SELECT provedor, modelo, chave_protegida, timeout_segundos, selecionado FROM configuracao_ia;"))
+            while (consulta.Ler()) registros.Add(Enumerable.Range(0, 5).Select(consulta.Texto).ToArray());
+        return () =>
+        {
+            using var banco = new Banco(caminho);
+            banco.Executar("BEGIN IMMEDIATE;");
+            try
+            {
+                banco.Executar("DELETE FROM configuracao_ia;");
+                foreach (var registro in registros)
+                {
+                    using var comando = banco.Preparar("INSERT INTO configuracao_ia (provedor, modelo, chave_protegida, timeout_segundos, selecionado) VALUES (?1, ?2, ?3, ?4, ?5);");
+                    for (int i = 0; i < registro.Length; i++) comando.Vincular(i + 1, registro[i]);
+                    comando.Ler();
+                }
+                banco.Executar("COMMIT;");
+            }
+            catch { banco.Executar("ROLLBACK;"); throw; }
+        };
     }
 
     internal sealed class Banco : IDisposable

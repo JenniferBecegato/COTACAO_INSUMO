@@ -110,9 +110,24 @@ namespace COTACAO_INSUMO
             // 1. CALCULAR PREÇO NORMALIZADO
             // =========================================================
 
+            // A numeric value alone is not a unit. Recover only a unit explicitly present in the product label.
+            if (string.IsNullOrWhiteSpace(item.UnidadeOriginal)
+                || System.Text.RegularExpressions.Regex.IsMatch(item.UnidadeOriginal.Trim(), @"^\d+(?:[.,]\d+)?$"))
+            {
+                var embalagem = System.Text.RegularExpressions.Regex.Match(item.ProdutoPdf ?? "",
+                    @"(?i)(?:^|\s)(\d+(?:[.,]\d+)?\s*(?:KG|MG|GR|G|ML|LT|L|MIL|MLH))\s*$");
+                if (embalagem.Success)
+                {
+                    string numeroAnterior = (item.UnidadeOriginal ?? "").Trim().Replace(',', '.');
+                    string numeroEmbalagem = System.Text.RegularExpressions.Regex.Match(embalagem.Groups[1].Value, @"\d+(?:[.,]\d+)?").Value.Replace(',', '.');
+                    if (string.IsNullOrWhiteSpace(numeroAnterior) || numeroAnterior == numeroEmbalagem)
+                        item.UnidadeOriginal = embalagem.Groups[1].Value;
+                }
+            }
+
             ResultadoPreco preco =
                 CalculadoraPreco.Calcular(
-                    item.UnidadeOriginal,
+                    item.UnidadeOriginal ?? "",
                     item.Quantidade,
                     item.ValorTotal,
                     item.ValorUnitario

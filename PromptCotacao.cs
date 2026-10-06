@@ -248,6 +248,22 @@
             1 KG
 
             ====================================================
+            UNIDADE COMPLETA E PREÇOS DE LÍQUIDOS
+            ====================================================
+            UnidadeOriginal nunca deve conter somente um número (20, 500, 2.5).
+            Separe quantidade comercial, tamanho da embalagem e unidade de medida.
+            Preserve formatos como 50 G, 1 KG, 800 ML, 0.5 L, MLH e 5 MIL.
+            Para líquidos, preserve L/LT ou ML; não converta volume em peso.
+            Leia a unidade também nos cabeçalhos, legendas e observações do documento.
+            Na CALDIC, "Tipo" (Nutracêutico, Dermocosmético, etc.) é uma categoria,
+            não a unidade de preço. "Fracionamento" é o tamanho da apresentação;
+            "Preço / Fracionamento" é diferente do preço total da apresentação.
+            Não atribua G ou MIL a um número sem evidência da unidade no documento.
+            Se a unidade não puder ser confirmada, retorne-a vazia para conferência.
+            Preserve ValorTotal e Quantidade quando só eles estiverem disponíveis;
+            nunca substitua um preço ausente por zero quando ele estiver legível no PDF.
+
+            ====================================================
             VALOR UNITÁRIO
             ====================================================
 

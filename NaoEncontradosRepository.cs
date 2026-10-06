@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace COTACAO_INSUMO;
 
@@ -54,7 +54,9 @@ public sealed class NaoEncontradosRepository
                         tipo_preco = excluded.tipo_preco,
                         unidade_original = excluded.unidade_original,
                         data_registro = excluded.data_registro
-                    WHERE CAST(excluded.preco_normalizado AS REAL) > 0;
+                    WHERE CAST(excluded.preco_normalizado AS REAL) > 0
+                        OR (CAST(insumos_nao_encontrados.preco_normalizado AS REAL) <= 0
+                            AND excluded.tipo_preco <> 'NAO_IDENTIFICADO' AND TRIM(excluded.tipo_preco) <> '');
                     """);
                 VincularPeriodo(comando, loja, mes, ano);
                 comando.Vincular(4, item.Fornecedor);
@@ -87,6 +89,33 @@ public sealed class NaoEncontradosRepository
                 consulta.Texto(7), consulta.Texto(8),
                 DateTime.Parse(consulta.Texto(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
         return itens;
+    }
+
+    public void Restaurar(IEnumerable<ItemNaoEncontradoSalvo> itens, string? loja = null, int mes = 0, int ano = 0)
+    {
+        using var banco = Abrir();
+        EmTransacao(banco, () =>
+        {
+            if (loja != null)
+            {
+                using var excluir = banco.Preparar("DELETE FROM insumos_nao_encontrados WHERE loja = ?1 COLLATE NOCASE AND mes = ?2 AND ano = ?3;");
+                VincularPeriodo(excluir, loja, mes, ano); excluir.Ler();
+            }
+            foreach (var item in itens)
+            {
+                using var comando = banco.Preparar("""
+                    INSERT INTO insumos_nao_encontrados
+                    (id, loja, mes, ano, fornecedor, insumo, preco_normalizado, tipo_preco, unidade_original, data_registro)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);
+                    """);
+                comando.Vincular(1, item.Id.ToString(CultureInfo.InvariantCulture));
+                comando.Vincular(2, item.Loja); comando.Vincular(3, item.Mes.ToString()); comando.Vincular(4, item.Ano.ToString());
+                comando.Vincular(5, item.Fornecedor); comando.Vincular(6, item.Insumo);
+                comando.Vincular(7, item.PrecoNormalizado.ToString(CultureInfo.InvariantCulture));
+                comando.Vincular(8, item.TipoPreco); comando.Vincular(9, item.UnidadeOriginal);
+                comando.Vincular(10, item.DataRegistro.ToString("O", CultureInfo.InvariantCulture)); comando.Ler();
+            }
+        });
     }
 
     public void Excluir(IEnumerable<long> ids)
