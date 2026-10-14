@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -227,7 +227,7 @@ namespace COTACAO_INSUMO
                 )
             )
             {
-                throw new Exception(
+                throw new RespostaIAException(
                     "A OpenAI não retornou o campo 'output'."
                 );
             }
@@ -274,7 +274,7 @@ namespace COTACAO_INSUMO
                 }
             }
 
-            throw new Exception(
+            throw new RespostaIAException(
                 "Não foi possível obter o texto retornado pela OpenAI."
             );
         }

@@ -77,10 +77,7 @@ namespace COTACAO_INSUMO
                 await response.Content
                     .ReadAsStringAsync();
 
-            throw new Exception(
-                $"Erro HTTP {(int)response.StatusCode} " +
-                $"({response.StatusCode})\n\n{erro}"
-            );
+            throw new ErroIAException(response.StatusCode, erro);
         }
     }
 }

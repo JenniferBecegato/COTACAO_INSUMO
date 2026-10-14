@@ -1,4 +1,4 @@
-﻿using ClosedXML.Excel;
+using ClosedXML.Excel;
 using OpenAI.Responses;
 
 #pragma warning disable OPENAI001
@@ -3820,174 +3820,8 @@ namespace COTACAO_INSUMO
             lblStatus.ForeColor =
                 Color.LightCoral;
 
-            string mensagemErro =
-                ex.Message;
+            ModalErroIA.Exibir(this, ex, provedor, modelo);
 
-            // =============================================
-            // OPENAI - SEM CRÉDITOS
-            // =============================================
-
-            if (
-                mensagemErro.Contains(
-                    "credit_balance_exhausted",
-                    StringComparison.OrdinalIgnoreCase
-                )
-                ||
-                mensagemErro.Contains(
-                    "insufficient_quota",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                MessageBox.Show(
-                    "A conexão com a OpenAI foi realizada, " +
-                    "mas a conta da API está sem créditos disponíveis.\n\n" +
-                    "Adicione créditos no faturamento da OpenAI " +
-                    "e tente novamente.",
-                    "OpenAI sem créditos",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-
-                return;
-            }
-
-            // =============================================
-            // CHAVE INVÁLIDA
-            // =============================================
-
-            if (
-                mensagemErro.Contains(
-                    "401"
-                )
-                ||
-                mensagemErro.Contains(
-                    "Unauthorized",
-                    StringComparison.OrdinalIgnoreCase
-                )
-                ||
-                mensagemErro.Contains(
-                    "API_KEY_INVALID",
-                    StringComparison.OrdinalIgnoreCase
-                )
-                ||
-                mensagemErro.Contains(
-                    "invalid api key",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                MessageBox.Show(
-                    "A chave da API parece ser inválida.\n\n" +
-                    "Confira a chave informada e tente novamente.",
-                    "Chave inválida",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
-
-                return;
-            }
-
-            // =============================================
-            // MODELO NÃO ENCONTRADO
-            // =============================================
-
-            if (
-                mensagemErro.Contains(
-                    "404"
-                )
-                ||
-                mensagemErro.Contains(
-                    "model",
-                    StringComparison.OrdinalIgnoreCase
-                )
-                &&
-                mensagemErro.Contains(
-                    "not found",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                MessageBox.Show(
-                    "O modelo selecionado não foi encontrado ou " +
-                    "não está disponível para essa chave.\n\n" +
-                    $"Modelo: {modelo}",
-                    "Modelo indisponível",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-
-                return;
-            }
-
-            // =============================================
-            // LIMITE / RATE LIMIT
-            // =============================================
-
-            if (
-                mensagemErro.Contains(
-                    "429"
-                )
-                ||
-                mensagemErro.Contains(
-                    "rate limit",
-                    StringComparison.OrdinalIgnoreCase
-                )
-                ||
-                mensagemErro.Contains(
-                    "RESOURCE_EXHAUSTED",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                MessageBox.Show(
-                    "O limite de uso da API foi atingido temporariamente.\n\n" +
-                    "Aguarde alguns instantes e tente novamente.",
-                    "Limite da API",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-
-                return;
-            }
-
-            // =============================================
-            // TIMEOUT
-            // =============================================
-
-            if (
-                ex is TaskCanceledException
-                ||
-                mensagemErro.Contains(
-                    "timeout",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            {
-                MessageBox.Show(
-                    "A requisição demorou mais do que o tempo configurado.\n\n" +
-                    $"Timeout atual: {numTimeout.Value} segundos.",
-                    "Tempo excedido",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-
-                return;
-            }
-
-            // =============================================
-            // ERRO GENÉRICO
-            // =============================================
-
-            MessageBox.Show(
-                "Não foi possível conectar ao provedor selecionado.\n\n" +
-                $"Provedor: {provedor}\n" +
-                $"Modelo: {modelo}\n\n" +
-                mensagemErro,
-                "Erro de conexão",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error
-            );
         }
 
         // =====================================================
@@ -6510,15 +6344,12 @@ namespace COTACAO_INSUMO
                 lblStatus.Text =
                     "O processamento foi interrompido.";
 
-                MessageBox.Show(
-                    "Não foi possível processar a cotação.\n\n" +
-                    ex.Message +
-                    "\n\n" +
-                    "Os PDFs selecionados foram mantidos para você tentar novamente.",
-                    "Erro no processamento",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
+                if (ex is ErroIAException or RespostaIAException or HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                    ModalErroIA.Exibir(this, ex, provedorIA, modeloIA, arquivosPreservados: true);
+                else
+                    MessageBox.Show(this, "Não foi possível processar a cotação.\n\n" + ex.Message +
+                        "\n\nOs PDFs selecionados foram mantidos para você tentar novamente.",
+                        "Erro no processamento", MessageBoxButtons.OK, MessageBoxIcon.Error);
 
                 // IMPORTANTE:
                 // não limpamos PDF/Excel quando dá erro.

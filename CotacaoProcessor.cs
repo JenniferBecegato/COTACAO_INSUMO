@@ -10,9 +10,10 @@ namespace COTACAO_INSUMO
     public class CotacaoProcessor
     {
         private readonly IAgenteIA iaService;
+        private readonly decimal TAXA_SIMILARIDADE = 0.85m;
 
         // Confiança mínima para preencher automaticamente
-        private const decimal CONFIANCA_MINIMA = 0.90m;
+        private const decimal CONFIANCA_MINIMA = 0.0m;
 
         public CotacaoProcessor(
             IAgenteIA iaService)
@@ -163,16 +164,7 @@ namespace COTACAO_INSUMO
             // para "Não encontrados" com o preço correto.
             // =========================================================
 
-            if (!item.Encontrado)
-            {
-                AdicionarNaoEncontrado(
-                    resultado,
-                    fornecedor,
-                    item
-                );
-
-                return;
-            }
+            // Quando a IA não encontra o insumo, a busca local usa o nome do PDF.
 
             // =========================================================
             // 4. CONFIANÇA INSUFICIENTE
@@ -200,6 +192,7 @@ namespace COTACAO_INSUMO
                 string.IsNullOrWhiteSpace(
                     item.InsumoExcel
                 )
+                && string.IsNullOrWhiteSpace(item.ProdutoPdf)
             )
             {
                 AdicionarNaoEncontrado(
@@ -218,7 +211,9 @@ namespace COTACAO_INSUMO
             int linha =
                 LocalizarLinhaInsumo(
                     planilha,
-                    item.InsumoExcel
+                    item.Encontrado && !string.IsNullOrWhiteSpace(item.InsumoExcel)
+                        ? item.InsumoExcel
+                        : item.ProdutoPdf ?? ""
                 );
 
             if (linha <= 0)
@@ -371,7 +366,10 @@ namespace COTACAO_INSUMO
             string nome)
         {
             string procurar =
-                NormalizarNome(nome);
+                NormalizarNome(nome.Replace(" (Urgente)", "", StringComparison.OrdinalIgnoreCase));
+
+            if (procurar.Length == 0)
+                return -1;
 
             IXLRange? range =
                 planilha.RangeUsed();
@@ -383,6 +381,10 @@ namespace COTACAO_INSUMO
                 range
                     .LastRow()
                     .RowNumber();
+
+            int linhaExata = -1;
+            int linhaSimilar = -1;
+            int candidatosSimilares = 0;
 
             for (
                 int linha = 2;
@@ -397,17 +399,49 @@ namespace COTACAO_INSUMO
                         )
                         .GetFormattedString();
 
-                if (
-                    NormalizarNome(atual)
-                    ==
-                    procurar
-                )
+                string nomeNormalizado = NormalizarNome(atual);
+                if (nomeNormalizado == procurar)
                 {
-                    return linha;
+                    if (linhaExata > 0)
+                        return -1;
+                    linhaExata = linha;
+                }
+                else if (CalcularSimilaridadeMenorString(procurar, nomeNormalizado) >= TAXA_SIMILARIDADE)
+                {
+                    linhaSimilar = linha;
+                    candidatosSimilares++;
                 }
             }
 
-            return -1;
+            return linhaExata > 0
+                ? linhaExata
+                : candidatosSimilares == 1 ? linhaSimilar : -1;
+        }
+
+        // Distância de edição da menor string ao trecho mais próximo da maior.
+        // Prefixos e sufixos adicionais não reduzem a compatibilidade.
+        private static decimal CalcularSimilaridadeMenorString(string primeiro, string segundo)
+        {
+            if (primeiro.Length == 0 || segundo.Length == 0)
+                return 0m;
+
+            string menor = primeiro.Length <= segundo.Length ? primeiro : segundo;
+            string maior = primeiro.Length <= segundo.Length ? segundo : primeiro;
+            int[] anterior = new int[maior.Length + 1];
+            int[] atual = new int[maior.Length + 1];
+
+            for (int i = 1; i <= menor.Length; i++)
+            {
+                atual[0] = i;
+                for (int j = 1; j <= maior.Length; j++)
+                {
+                    int substituicao = anterior[j - 1] + (menor[i - 1] == maior[j - 1] ? 0 : 1);
+                    atual[j] = Math.Min(substituicao, Math.Min(anterior[j] + 1, atual[j - 1] + 1));
+                }
+                (anterior, atual) = (atual, anterior);
+            }
+
+            return 1m - (decimal)anterior.Min() / menor.Length;
         }
 
         // =====================================================

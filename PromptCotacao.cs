@@ -1,4 +1,8 @@
-﻿namespace COTACAO_INSUMO
+﻿using DocumentFormat.OpenXml.Office2010.ExcelAc;
+using DocumentFormat.OpenXml.Spreadsheet;
+using Microsoft.VisualBasic.Logging;
+
+namespace COTACAO_INSUMO
 {
     public static class PromptCotacao
     {
@@ -6,487 +10,90 @@
             string listaInsumosExcel)
         {
             return $$"""
-            Você está analisando uma cotação de fornecedores
-            de uma farmácia de manipulação.
+             Você é um extrator especializado de orçamentos e cotações para farmácias de manipulação.
+                
+            Sua função é EXTRAIR todos os itens do orçamento em anexo e COMPARÁ-LOS com a lista oficial de insumos da farmácia.
 
-            Sua função é EXTRAIR os dados do orçamento e
-            comparar os produtos com a lista oficial de
-            insumos da planilha.
-
-            NÃO faça cálculos de preço por grama.
-            NÃO faça cálculos de preço por unidade.
-
-            Todos os cálculos serão realizados pelo programa C#.
+            ATENÇÃO:
+                        -NÃO calcule preço por grama.
+            -NÃO calcule preço por unidade.
+            -PrecoNormalizado deve ser SEMPRE 0.
+            - TipoPreco deve ser SEMPRE "".
+            - Todos os cálculos finais de custo e fracionamento serão executados pelo programa em C#.
 
             ====================================================
             LISTA OFICIAL DE INSUMOS DO EXCEL
             ====================================================
-
             {{listaInsumosExcel}}
 
             ====================================================
-            FORNECEDOR
+            1. REGRAS PARA IDENTIFICAÇÃO DO FORNECEDOR
             ====================================================
-
-            Identifique o nome do fornecedor responsável
-            pelo documento.
-
-            Retorne apenas o nome do fornecedor.
-
-            Para os orçamentos de cápsulas com a marca CAPSUGEL e/ou
-            o nome i9 Magistral (I9 MAGISTRAL), retorne "CAPSUGEL".
-            Neste cadastro, i9 Magistral e Capsugel usam a mesma coluna.
-            Não crie um fornecedor separado chamado "I9 MAGISTRAL".
-
-            Exemplos:
-
-            FAGRON
-
-            SIXTY
-
-            GALENA
-
-            ALIANZA INDUSTRIA E COMERCIO DE COSMETICOS LTDA
+            - Identifique a razão social ou marca principal do fornecedor do documento (ex.: FAGRON, GALENA, SIXTY, etc.).
+            - REGRA ESPECÍFICA CAPSUGEL: Para orçamentos com a marca CAPSUGEL ou com o nome "i9 Magistral" (I9 MAGISTRAL), retorne SEMPRE "CAPSUGEL". Não crie um fornecedor chamado "I9 MAGISTRAL".
 
             ====================================================
-            PRODUTOS
+            2. REGRAS CRÍTICAS PARA PREÇO E UNIDADE ORIGINAL
             ====================================================
+            O C# utilizará o campo "UnidadeOriginal" para saber qual operador matemático aplicar sobre "ValorUnitario".
 
-            Analise TODOS os produtos presentes no PDF.
+            REGRA 1 - PREÇO POR KG PRESENTE NO PDF (Matérias-Primas Sólidas/Pós):
+            - Se o documento contiver campo ou coluna explícita de "Valor KG", "Preço KG", "Valor/KG" ou "R$/KG", priorize SEMPRE esse preço em "ValorUnitario".
+            - Retorne obrigatoriamente: "UnidadeOriginal": "KG".
+            - Na Fagron, a coluna exibe "Valor KG" e "Valor Unit.". Certifique-se de extrair o valor que representa a taxa por KG (ex.: pacote de 250 g cotado a R$ 109,00 terá Valor KG = 436.00).
 
-            Para cada produto extraia:
+            REGRA 2 - EMBALAGEM ESPECÍFICA EM GRAMAS OU MILIGRAMAS (Sem Preço por KG):
+            - Se NÃO houver preço por KG e o valor for de uma embalagem fechada, preserve o peso e a unidade em "UnidadeOriginal" (ex.: "250 G", "100 G", "500 MG").
+            - NUNCA retorne apenas "G" ou "MG" se o preço se referir a uma embalagem fracionada.
 
-            - nome do produto;
-            - quantidade;
-            - unidade;
-            - preço unitário;
-            - valor total.
+            REGRA 3 - CÁPSULAS VAZIAS (Lotes, Milheiros e Unidades):
+            - Se a unidade no documento for "MH", "Mh" ou "MLH": retorne "UnidadeOriginal": "MLH" e em "ValorUnitario" o preço por milheiro.
+            - Se o produto for vendido em lotes fechados de milhar como "5 MIL", "2,5MIL", "10 MIL": retorne exatamente essa apresentação em "UnidadeOriginal" (ex.: "5 MIL", "2,5MIL") e em "ValorUnitario" o preço total desse pacote.
 
-            ====================================================
-            REGRA MAIS IMPORTANTE SOBRE PREÇO
-            ====================================================
+            REGRA 4 - LÍQUIDOS E VOLUMES:
+            - Preserve a unidade de volume original (ex.: "1 L", "2 LT", "500 ML"). NUNCA converta líquido em quilo/grama.
+            - Se houver preço por litro, use "UnidadeOriginal": "L" (ou "LT") e o valor por litro.
 
-            O programa C# precisa saber qual preço deve usar
-            para calcular o preço por grama ou unidade.
-
-            ----------------------------------------------------
-            CASO 1 - O PDF POSSUI PREÇO POR KG
-            ----------------------------------------------------
-
-            Se existir explicitamente no documento uma coluna
-            como:
-
-            Valor KG
-            Preço KG
-            Valor/KG
-            R$/KG
-
-            use esse valor como ValorUnitario.
-
-            E retorne:
-
-            UnidadeOriginal = "KG"
-
-            Exemplo:
-
-            Valor KG = 580,00
-
-            Retorne:
-
-            "UnidadeOriginal": "KG",
-            "ValorUnitario": 580.00
-
-            O C# fará:
-
-            580 / 1000
-
-            NÃO faça essa divisão.
-
-            ----------------------------------------------------
-            CASO 2 - O PREÇO É DE UMA EMBALAGEM EM GRAMAS
-            ----------------------------------------------------
-
-            Se NÃO existir preço por KG e o preço informado for
-            para uma embalagem específica, preserve a quantidade
-            da embalagem dentro de UnidadeOriginal.
-
-            Exemplo:
-
-            Produto: ATIVO X
-            Embalagem: 250 G
-            Valor unitário: 109,00
-
-            Retorne:
-
-            "UnidadeOriginal": "250 G",
-            "ValorUnitario": 109.00
-
-            NÃO transforme "250 G" apenas em "G".
-
-            O programa calculará:
-
-            109 / 250
-
-            ----------------------------------------------------
-            CASO 3 - PREÇO POR KG COM QUANTIDADE COMPRADA
-            ----------------------------------------------------
-
-            Um documento pode mostrar:
-
-            Quantidade: 0,5000 kg
-            Valor unitário: 580,00
-
-            Isso significa:
-
-            quantidade comprada = 0,5000 KG
-            preço unitário = R$ 580,00 POR KG
-
-            Retorne:
-
-            "Quantidade": 0.5000,
-            "UnidadeOriginal": "KG",
-            "ValorUnitario": 580.00
-
-            NÃO use 500G do nome do produto para substituir
-            essas informações.
-
-            ----------------------------------------------------
-            CASO 4 - MLH / MILHEIRO
-            ----------------------------------------------------
-
-            MH, Mh e MLH significam MILHEIRO (1000 unidades).
-            Nos PDFs da Capsugel / i9 Magistral, a unidade aparece como "Mh".
-            Retorne "UnidadeOriginal": "MLH" e preserve o preço por milheiro
-            da coluna "Valor de Venda" em "ValorUnitario".
-            A coluna "Embalagem" (5,000 / 3,000 / 2,000) descreve a embalagem;
-            não divida novamente o preço por essa quantidade.
-            Exemplo: Mh, embalagem 5,000, valor de venda 39,95,
-            quantidade 20,00, total 799,00: preço = 39,95 por milheiro,
-            não 39,95 por embalagem de 5000 cápsulas.
-
-            Se o preço for por MLH:
-
-            Exemplo:
-
-            Unidade = MLH
-            Valor unitário = 24,70
-
-            Retorne:
-
-            "UnidadeOriginal": "MLH",
-            "ValorUnitario": 24.70
-
-            O programa dividirá por 1000.
-
-            ----------------------------------------------------
-            CASO 5 - 5 MIL / 10 MIL
-            ----------------------------------------------------
-
-            Se o produto vier como:
-
-            5 MIL
-
-            preserve:
-
-            "UnidadeOriginal": "5 MIL"
-
-            Não transforme em apenas "MIL".
-
-            Exemplo:
-
-            5 MIL
-            Valor unitário = 99,50
-
-            Retorne:
-
-            "UnidadeOriginal": "5 MIL",
-            "ValorUnitario": 99.50
-
-            ----------------------------------------------------
-            CASO 6 - MG
-            ----------------------------------------------------
-
-            Preserve também a quantidade.
-
-            Exemplo:
-
-            500 MG
-
-            deve retornar:
-
-            "UnidadeOriginal": "500 MG"
-
-            e NÃO apenas:
-
-            "MG"
+            REGRA 5 - CAMPOS DE QUANTIDADE E VALORES:
+            - "Quantidade": Extraia o valor numérico da coluna de quantidade de compra/linhas do documento (ex.: 1.0, 2.0).
+            - "ValorUnitario": O valor base comercial selecionado pelas regras acima. NUNCA inclua IPI, ST, ICMS ou frete.
+            - "ValorTotal": O total da linha do produto sem os impostos somados (ou seja, o subtotal comercial líquido).
 
             ====================================================
-            QUANTIDADE
+            3. REGRAS DE MATCHING (CORRESPONDÊNCIA COM O EXCEL)
             ====================================================
+            Compare o produto do PDF ("ProdutoPdf") com a lista oficial:
 
-            Quantidade deve representar a quantidade da linha
-            do orçamento.
+            1. DESCONSIDERE NA COMPARAÇÃO:
+               - Termos como "(urgente)" da lista oficial.
+               - Apresentações e tamanhos de embalagem presentes no PDF (ex.: "2KG", "500G", "100G", "ACG", "P.344").
+               - Acentuações e letras maiúsculas/minúsculas.
 
-            Exemplos:
+            2. EQUIVALÊNCIAS PERMITIDAS:
+               - Sais e Quelatos equivalentes: "Bisglicinato" corresponde a "Quelato" (ex.: Magnesio Bisglicinato -> magnesio quelato; Zinco Bisglicinato -> zinco quelato).
+               - Dimalato: "Magnesio Malato" corresponde a "dimalato magnesio".
+               - Cápsulas abreviadas: Ex.: "Caps.0 Gel Inc/Inc" corresponde a "capsula 0 incolor"; "Caps.4 Veg Br/Br" corresponde a "capsula 4 vegana branca".
+               - Extratos padronizados equivalentes: Ex.: "CITRUSIM-Ext. Citrus sinensis" corresponde a "citrus sinensis extrato seco".
 
-            0,5000 kg
+            3. NÃO EQUIVALENTES (PROIBIDO DAR MATCH):
+               - Ativos diferentes: "Minoxidil Base" NÃO é "Minoxidil Sulfato".
+               - Aminoácidos distintos: "L-Cisteina" NÃO é "Cistina".
+               - Formas farmacêuticas ou marcas proprietárias sem respaldo: "Siliciumax" NÃO é "Silicium P".
 
-            Quantidade:
-            0.5000
-
-            UnidadeOriginal:
-            KG
-
-            ----------------------------------------------------
-
-            5 unidades de 1 KG:
-
-            Quantidade:
-            5
-
-            UnidadeOriginal:
-            1 KG
-
-            ====================================================
-            UNIDADE COMPLETA E PREÇOS DE LÍQUIDOS
-            ====================================================
-            UnidadeOriginal nunca deve conter somente um número (20, 500, 2.5).
-            Separe quantidade comercial, tamanho da embalagem e unidade de medida.
-            Preserve formatos como 50 G, 1 KG, 800 ML, 0.5 L, MLH e 5 MIL.
-            Para líquidos, preserve L/LT ou ML; não converta volume em peso.
-            Leia a unidade também nos cabeçalhos, legendas e observações do documento.
-            Na CALDIC, "Tipo" (Nutracêutico, Dermocosmético, etc.) é uma categoria,
-            não a unidade de preço. "Fracionamento" é o tamanho da apresentação;
-            "Preço / Fracionamento" é diferente do preço total da apresentação.
-            Não atribua G ou MIL a um número sem evidência da unidade no documento.
-            Se a unidade não puder ser confirmada, retorne-a vazia para conferência.
-            Preserve ValorTotal e Quantidade quando só eles estiverem disponíveis;
-            nunca substitua um preço ausente por zero quando ele estiver legível no PDF.
+            4. RESULTADO DO MATCH:
+               - Se houver certeza alta/total: "Encontrado": true, "InsumoExcel": "NOME EXATO DA LISTA", "Confianca": 0.90 a 1.00.
+               - Se não encontrar ou houver dúvida: "Encontrado": false, "InsumoExcel": "", "Confianca": 0.0.
+               - REGRA MANDATÓRIA: Mesmo que "Encontrado" seja false, TODOS os campos do produto ("ProdutoPdf", "UnidadeOriginal", "Quantidade", "ValorUnitario", "ValorTotal") DEVEM ser extraídos normalmente.
 
             ====================================================
-            VALOR UNITÁRIO
+            4. FORMATO DE SAÍDA
             ====================================================
-
-            ValorUnitario deve representar o valor usado como
-            base comercial do produto.
-
-            PRIORIDADE:
-
-            1. Se existir explicitamente "Valor KG" ou
-               equivalente, use o VALOR KG.
-
-            2. Caso não exista Valor KG, use o preço unitário
-               da embalagem.
-
-            Nunca use:
-
-            - imposto;
-            - IPI;
-            - ICMS;
-            - PIS;
-            - COFINS;
-            - frete;
-
-            como ValorUnitario.
-
-            ====================================================
-            VALOR TOTAL
-            ====================================================
-
-            ValorTotal deve ser exatamente o total comercial
-            daquela linha do produto.
-
-            Porém o C# poderá não utilizá-lo no cálculo.
-
-            Não substitua ValorUnitario pelo ValorTotal.
-
-            ====================================================
-            CORRESPONDÊNCIA COM O EXCEL
-            ====================================================
-
-            Compare o produto do PDF com a lista oficial
-            de insumos.
-
-            Diferenças simples de escrita podem ser consideradas.
-
-            Exemplo:
-
-            PDF:
-
-            D-RIBOSE 2KG
-
-            Excel:
-
-            D RIBOSE
-
-            Pode ser o mesmo insumo.
-
-            ----------------------------------------------------
-
-            PDF:
-
-            FOLINATO DE CALCIO 10GR
-
-            Excel:
-
-            FOLINATO DE CALCIO
-
-            Pode ser o mesmo insumo.
-
-            ====================================================
-            TEXTO DE EMBALAGEM
-            ====================================================
-
-            Informações como:
-
-            5KG
-            2KG
-            500G
-            250G
-            100G
-            50G
-            20G
-            10G
-
-            podem ser ignoradas APENAS para comparar o nome
-            do produto com o Excel.
-
-            NÃO ignore essas informações ao preencher
-            UnidadeOriginal quando forem necessárias para
-            calcular o preço.
-
-            ====================================================
-            NÃO INVENTAR CORRESPONDÊNCIAS
-            ====================================================
-
-            Produtos com palavras semelhantes não são
-            automaticamente equivalentes.
-
-            Exemplo:
-
-            MINOXIDIL BASE
-
-            não é automaticamente igual a:
-
-            MINOXIDIL SULFATO
-
-            Se houver dúvida:
-
-            "Encontrado": false
-
-            ====================================================
-            CONFIANÇA
-            ====================================================
-
-            Informe confiança entre 0 e 1.
-
-            Exemplos:
-
-            1.00
-            certeza praticamente absoluta
-
-            0.95
-            confiança muito alta
-
-            0.80
-            existe alguma dúvida
-
-            0.50
-            correspondência incerta
-
-            Se não tiver segurança suficiente, prefira:
-
-            "Encontrado": false
-
-            ====================================================
-            PRODUTO NÃO ENCONTRADO
-            ====================================================
-
-            Mesmo se o produto NÃO existir na lista do Excel:
-
-            EXTRAIA normalmente:
-
-            - ProdutoPdf
-            - UnidadeOriginal
-            - Quantidade
-            - ValorUnitario
-            - ValorTotal
-
-            Exemplo:
-
-            produto não encontrado no Excel:
-
-            BASE SHINE GLOSS 500G
-
-            Mesmo assim:
-
-            "ProdutoPdf": "BASE SHINE GLOSS 500G",
-            "InsumoExcel": "",
-            "UnidadeOriginal": "KG",
-            "Quantidade": 0.5000,
-            "ValorUnitario": 580.00,
-            "ValorTotal": 308.85,
-            "Encontrado": false
-
-            Isso é MUITO IMPORTANTE.
-
-            O fato de um item não existir no Excel NÃO significa
-            que o preço não deve ser extraído.
-
-            ====================================================
-            NÃO CALCULAR
-            ====================================================
-
-            PrecoNormalizado deve SEMPRE retornar:
-
-            0
-
-            TipoPreco deve SEMPRE retornar:
-
-            ""
-
-            O C# fará esses cálculos.
-
-            ====================================================
-            NÚMEROS
-            ====================================================
-
-            No JSON use ponto como separador decimal.
-
-            Exemplos:
-
-            R$ 580,00
-            deve retornar:
-            580.00
-
-            R$ 1.125,50
-            deve retornar:
-            1125.50
-
-            0,5000
-            deve retornar:
-            0.5000
-
-            ====================================================
-            RESPOSTA
-            ====================================================
-
-            Retorne APENAS JSON válido.
-
-            NÃO coloque markdown.
-
-            NÃO escreva:
-
-            ```json
-
-            NÃO escreva explicações.
-
-            NÃO escreva observações.
-
-            NÃO escreva texto antes ou depois do JSON.
-
-            Use exatamente esta estrutura:
-
+            - Retorne EXCLUSIVAMENTE o JSON bruto.
+            - NÃO use blocos de código markdown (NÃO use ```json ou ```).
+            - NÃO adicione textos explicativos, saudações ou comentários antes ou depois.
+            - Use ponto (.) como separador decimal.
+
+            Estrutura exata:
             {
               "Fornecedor": "NOME DO FORNECEDOR",
               "Itens": [
@@ -494,9 +101,9 @@
                   "ProdutoPdf": "NOME EXATO DO PRODUTO NO PDF",
                   "InsumoExcel": "NOME EXATO DO INSUMO NO EXCEL OU VAZIO",
                   "UnidadeOriginal": "KG",
-                  "Quantidade": 0.5000,
-                  "ValorUnitario": 580.00,
-                  "ValorTotal": 290.00,
+                  "Quantidade": 1.0,
+                  "ValorUnitario": 436.00,
+                  "ValorTotal": 109.00,
                   "PrecoNormalizado": 0,
                   "TipoPreco": "",
                   "Encontrado": true,

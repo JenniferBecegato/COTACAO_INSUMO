@@ -9,7 +9,9 @@ namespace COTACAO_INSUMO
         public static ResultadoPreco Calcular(string unidadeOriginal, decimal quantidade, decimal valorTotal, decimal valorUnitario)
         {
             var resultado = CalcularInterno(unidadeOriginal, quantidade, valorTotal, valorUnitario);
-            if (resultado.PodeConverter) return resultado;
+            if (resultado.PodeConverter) 
+                return resultado;
+            
             string unidade = NormalizarUnidade(unidadeOriginal);
             if (UnidadeEhMg(unidade) || UnidadeEhKg(unidade) || UnidadeEhGrama(unidade))
             { resultado.TipoPreco = "GRAMA"; resultado.UnidadeReferencia = "g"; }

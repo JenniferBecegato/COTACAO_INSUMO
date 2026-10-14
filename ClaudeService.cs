@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -252,7 +252,7 @@ namespace COTACAO_INSUMO
                 )
             )
             {
-                throw new Exception(
+                throw new RespostaIAException(
                     "Claude não retornou conteúdo."
                 );
             }
@@ -283,7 +283,7 @@ namespace COTACAO_INSUMO
                 }
             }
 
-            throw new Exception(
+            throw new RespostaIAException(
                 "Não foi possível obter a resposta do Claude."
             );
         }

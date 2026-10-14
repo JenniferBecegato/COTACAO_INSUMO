@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Http;
 using System.Text;
@@ -248,7 +248,7 @@ namespace COTACAO_INSUMO
                 candidates.GetArrayLength() == 0
             )
             {
-                throw new Exception(
+                throw new RespostaIAException(
                     "O Gemini não retornou candidatos."
                 );
             }
@@ -268,7 +268,7 @@ namespace COTACAO_INSUMO
                 )
             )
             {
-                throw new Exception(
+                throw new RespostaIAException(
                     "O Gemini não retornou conteúdo."
                 );
             }
@@ -298,7 +298,7 @@ namespace COTACAO_INSUMO
                 textoFinal.Length == 0
             )
             {
-                throw new Exception(
+                throw new RespostaIAException(
                     "O Gemini retornou uma resposta vazia."
                 );
             }
