@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 
 namespace COTACAO_INSUMO;
 
@@ -37,13 +37,13 @@ public sealed class NaoEncontradosRepository
         catch { banco.Dispose(); throw; }
     }
 
-    public void SalvarLote(string loja, int mes, int ano,
-        IEnumerable<ItemNaoEncontradoProcessado> itens, DateTime dataRegistro)
+    public int SalvarLote(string loja, int mes, int ano, InsumosCampos resultado, DateTime dataRegistro)
     {
         using var banco = Abrir();
+        int gravados = 0;
         EmTransacao(banco, () =>
         {
-            foreach (var item in itens)
+            foreach (var item in resultado.Insumos.Where(item => !item.Encontrado))
             {
                 using var comando = banco.Preparar("""
                     INSERT INTO insumos_nao_encontrados
@@ -53,21 +53,26 @@ public sealed class NaoEncontradosRepository
                         preco_normalizado = excluded.preco_normalizado,
                         tipo_preco = excluded.tipo_preco,
                         unidade_original = excluded.unidade_original,
-                        data_registro = excluded.data_registro
-                    WHERE CAST(excluded.preco_normalizado AS REAL) > 0
-                        OR (CAST(insumos_nao_encontrados.preco_normalizado AS REAL) <= 0
-                            AND excluded.tipo_preco <> 'NAO_IDENTIFICADO' AND TRIM(excluded.tipo_preco) <> '');
+                        data_registro = excluded.data_registro;
                     """);
                 VincularPeriodo(comando, loja, mes, ano);
-                comando.Vincular(4, item.Fornecedor);
-                comando.Vincular(5, item.Insumo);
-                comando.Vincular(6, item.PrecoNormalizado.ToString(CultureInfo.InvariantCulture));
-                comando.Vincular(7, item.TipoPreco);
-                comando.Vincular(8, item.UnidadeOriginal);
+                comando.Vincular(4, resultado.Fornecedor);
+                comando.Vincular(5, item.Nome);
+                comando.Vincular(6, (item.PrecoUnitario ?? 0m).ToString(CultureInfo.InvariantCulture));
+                comando.Vincular(7, item.Unidad switch
+                {
+                    "Kg" or "G" => "GRAMA",
+                    "L" or "ML" => "MILILITRO",
+                    "Unidade" or "Milheiro" => "UNIDADE",
+                    _ => "NAO_IDENTIFICADO"
+                });
+                comando.Vincular(8, item.Unidad ?? "");
                 comando.Vincular(9, dataRegistro.ToString("O", CultureInfo.InvariantCulture));
                 comando.Ler();
+                gravados++;
             }
         });
+        return gravados;
     }
 
     public List<ItemNaoEncontradoSalvo> Consultar(string loja, int mes, int ano)

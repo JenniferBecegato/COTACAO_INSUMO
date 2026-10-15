@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using OpenAI.Responses;
 
 #pragma warning disable OPENAI001
@@ -13,7 +13,6 @@ namespace COTACAO_INSUMO
         private HistoricoTabela? historicoTabelaAtivo;
         private Action? indicarAlteracaoTabela;
         private bool desfazendo;
-        private bool processamentoEmAndamento;
         private void RegistrarDesfazer(Action desfazer, Action refazer)
         {
             if (desfazendo) return;
@@ -43,9 +42,18 @@ namespace COTACAO_INSUMO
         }
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (keyData == (Keys.Control | Keys.L))
+            {
+                var tabela = painelConteudo.Controls.Find("tabelaCotacao", true)
+                    .OfType<DataGridView>().FirstOrDefault();
+                if (tabela != null && tabela.Visible)
+                {
+                    LocalizarNaCotacao.Abrir(this, tabela);
+                    return true;
+                }
+            }
             if (keyData == (Keys.Control | Keys.Z))
             {
-                if (processamentoEmAndamento) return true;
                 if (historicoTabelaAtivo != null)
                 {
                     // Cancel the in-progress edit first; committed edits use the application history.
@@ -60,7 +68,6 @@ namespace COTACAO_INSUMO
             }
             if (keyData == (Keys.Control | Keys.Y))
             {
-                if (processamentoEmAndamento) return true;
                 RefazerUltimaAcao(); return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
@@ -80,6 +87,7 @@ namespace COTACAO_INSUMO
             "";
 
         private int timeoutIA = 3600;
+        private bool gravarJsonIA;
 
         private readonly ConfiguracaoIARepository configuracoesIA = new();
 
@@ -121,7 +129,6 @@ namespace COTACAO_INSUMO
             NaoEncontrados,
             Configuracoes,
             Ajuda,
-            Processando,
             Concluido
         }
 
@@ -157,21 +164,11 @@ namespace COTACAO_INSUMO
         private int mesSelecionado = DateTime.Now.Month;
         private int anoSelecionado = DateTime.Now.Year;
 
-        private int ultimoTotalInsumosPreenchidos = 0;
-        private int ultimoTotalInsumosNaoEncontrados = 0;
 
 
 
-        private bool EhColunaFornecedorGrid(DataGridViewColumn coluna)
-        {
-            string titulo = NormalizarCabecalhoGrid(coluna.Tag as string ?? coluna.HeaderText);
-            return !string.IsNullOrWhiteSpace(titulo)
-                && !titulo.StartsWith("INSUMO", StringComparison.Ordinal)
-                && !titulo.Contains("FORNECEDOR ANTERIOR")
-                && !titulo.Contains("FORNECEDOR MAIS EM CONTA")
-                && !titulo.Contains("QUANTIDADE")
-                && titulo != "QTD";
-        }
+        private bool EhColunaFornecedorGrid(DataGridViewColumn coluna) =>
+            PreenchedorCotacao.EhFornecedor(coluna.Tag as string ?? coluna.HeaderText);
         private void AtualizarFornecedorMaisBaratoGrid(
       DataGridView dgv,
       int indiceLinha)
@@ -423,7 +420,7 @@ namespace COTACAO_INSUMO
             return resultado;
         }
 
-        private void FormatarValorGridTresCasas(
+        private void FormatarValorGridQuatroCasas(
     DataGridView dgv,
     int indiceLinha,
     int indiceColuna)
@@ -484,7 +481,7 @@ namespace COTACAO_INSUMO
             valor =
                 Math.Round(
                     valor,
-                    3,
+                    4,
                     MidpointRounding.AwayFromZero
                 );
 
@@ -492,7 +489,7 @@ namespace COTACAO_INSUMO
                 valor;
 
             celula.Style.Format =
-                "0.000";
+                "0.0000";
         }
 
         private readonly NaoEncontradosRepository naoEncontradosRepository = new();
@@ -514,6 +511,7 @@ namespace COTACAO_INSUMO
 
             try
             {
+                gravarJsonIA = configuracoesIA.CarregarGravacaoJson();
                 ConfiguracaoIA? salva = configuracoesIA.Carregar();
                 if (salva != null)
                 {
@@ -1321,7 +1319,7 @@ namespace COTACAO_INSUMO
                 if (existe)
                 {
                     lblAviso.Text =
-                        $"Pasta {anoSelecionado}-{mesSelecionado:00} já existe. Será complementada.";
+                        $"A cotação existente será complementada na pasta {anoSelecionado}-{mesSelecionado:00}. Não é necessário selecionar outra planilha-base.";
 
                     lblAviso.ForeColor =
                         Color.FromArgb(255, 183, 0);
@@ -1332,7 +1330,7 @@ namespace COTACAO_INSUMO
                 else
                 {
                     lblAviso.Text =
-                        $"Nova tabela de cotação para {mesSelecionado:00}/{anoSelecionado} será criada.";
+                        $"A cotação será salva no período {mesSelecionado:00}/{anoSelecionado}. A cotação será criada a partir da planilha-base selecionada.";
 
                     lblAviso.ForeColor =
                         Color.LightGreen;
@@ -1550,8 +1548,8 @@ namespace COTACAO_INSUMO
      new Label
      {
          Text =
-             "Cotação existente: não selecione Excel.\n" +
-             "O sistema utilizará a planilha já salva.",
+             "Nova cotação: selecione a planilha-base.\n" +
+             "A cotação será salva na pasta do ano-mês e reutilizada se já existir.",
 
          ForeColor =
              corTextoSecundario,
@@ -1780,104 +1778,153 @@ namespace COTACAO_INSUMO
             processar.Location =
                 new Point(665, 635);
 
-            processar.Click +=
-    async (s, e) =>
-    {
-        // =====================================================
-        // EMPRESA
-        // =====================================================
+            processar.Click += async (s, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(lojaSelecionada) || pdfsSelecionados.Count == 0 ||
+                    (!File.Exists(caminhoExcelSelecionado) &&
+                     !PlanilhaPeriodoExiste(lojaSelecionada, mesSelecionado, anoSelecionado)))
+                {
+                    MessageBox.Show(this, "Selecione a unidade, a planilha e os PDFs dos fornecedores.",
+                        "Arquivos necessários", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+                if (!configuracaoIASalva || string.IsNullOrWhiteSpace(apiKeyIA))
+                {
+                    MessageBox.Show(this, "Salve a configuração da IA antes de processar.",
+                        "Configurações", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
 
-        if (
-            string.IsNullOrWhiteSpace(
-                lojaSelecionada
-            )
-        )
-        {
-            MessageBox.Show(
-                "Selecione Orlando ou Drugstore.",
-                "Atenção",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            );
-
-            return;
-        }
-
-        // =====================================================
-        // PDF
-        // =====================================================
-
-        if (
-            pdfsSelecionados.Count == 0
-        )
-        {
-            MessageBox.Show(
-                "Selecione pelo menos um PDF de fornecedor.",
-                "Atenção",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            );
-
-            return;
-        }
-
-        // =====================================================
-        // CONFIGURAÇÃO DA IA
-        // =====================================================
-
-        if (
-            !configuracaoIASalva ||
-            string.IsNullOrWhiteSpace(
-                apiKeyIA
-            )
-        )
-        {
-            MessageBox.Show(
-                "Configure a OpenAI antes de processar a cotação.\n\n" +
-                "Acesse Configurações > Agente de IA.",
-                "IA não configurada",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            );
-
-            return;
-        }
-
-        bool cotacaoExiste =
-            PlanilhaPeriodoExiste(
-                lojaSelecionada,
-                mesSelecionado,
-                anoSelecionado
-            );
-
-        // =====================================================
-        // NOVA COTAÇÃO PRECISA DO EXCEL
-        // =====================================================
-
-        if (
-            !cotacaoExiste &&
-            string.IsNullOrWhiteSpace(
-                caminhoExcelSelecionado
-            )
-        )
-        {
-            MessageBox.Show(
-                "Esta é uma nova cotação.\n\n" +
-                "Selecione a planilha Excel-base.",
-                "Planilha necessária",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning
-            );
-
-            return;
-        }
-
-        // =====================================================
-        // PROCESSAR
-        // =====================================================
-
-        await ProcessarCotacaoComIAAsync();
-    };
+                string pasta = ObterPastaPeriodo(lojaSelecionada, mesSelecionado, anoSelecionado);
+                var arquivos = pdfsSelecionados.ToArray();
+                string caminhoComparacao = ObterCaminhoPlanilhaPeriodo(lojaSelecionada, mesSelecionado, anoSelecionado);
+                var nomesPlanilha = new Lazy<List<string>>(() => LeitorPlanilhaInsumos.Ler(caminhoComparacao));
+                var falhas = new List<string>();
+                var falhasPersistencia = new List<string>();
+                var falhasPreenchimento = new List<string>();
+                var pendenciasPreenchimento = new List<string>();
+                int precosPreenchidos = 0, fornecedoresCriados = 0;
+                string lojaProcessamento = lojaSelecionada;
+                int mesProcessamento = mesSelecionado, anoProcessamento = anoSelecionado;
+                int salvos = 0, camposSalvos = 0, pendentes = 0, registrosPersistidos = 0;
+                string? resumoConclusao = null;
+                tela.Enabled = false;
+                tela.Visible = false;
+                var telaEspera = CriarTelaEsperaProcessamento(out var lblStatus);
+                painelConteudo.Controls.Add(telaEspera);
+                telaEspera.BringToFront();
+                painelMenu.Enabled = false;
+                UseWaitCursor = true;
+                try
+                {
+                    lblStatus.Text = "Preparando a planilha da cotação do período...";
+                    await Task.Yield();
+                    PreparadorPlanilhaPeriodo.Preparar(caminhoExcelSelecionado, caminhoComparacao);
+                    var agente = AgenteIAFactory.Criar(provedorIA, apiKeyIA, modeloIA, timeoutIA);
+                    for (int i = 0; i < arquivos.Length; i++)
+                    {
+                        lblStatus.Text = $"Analisando PDF {i + 1}/{arquivos.Length}...\n\n" +
+                            Path.GetFileName(arquivos[i]) + "\n\n" +
+                            $"PDFs extraídos: {salvos}";
+                        try
+                        {
+                            var resultado = await agente.ExtrairInsumosAsync(arquivos[i]);
+                            pendentes += resultado.Insumos.Count(x => x.Preco == null || x.Unidad == null);
+                            salvos++;
+                            try
+                            {
+                                lblStatus.Text = $"Comparando insumos do PDF {i + 1}/{arquivos.Length} com a planilha...";
+                                await Task.Yield();
+                                var campos = ComparadorInsumos.Comparar(resultado, nomesPlanilha.Value);
+                                if (gravarJsonIA)
+                                {
+                                    try
+                                    {
+                                        lblStatus.Text = $"Salvando JSON _campos do PDF {i + 1}/{arquivos.Length}...";
+                                        await ExportadorInsumos.SalvarCamposAsync(campos, arquivos[i], pasta);
+                                        camposSalvos++;
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        falhas.Add($"{Path.GetFileName(arquivos[i])}: falha ao gravar JSON _campos. {ex.Message}");
+                                    }
+                                }
+                                try
+                                {
+                                    lblStatus.Text = $"Preenchendo planilha do PDF {i + 1}/{arquivos.Length}...";
+                                    await Task.Yield();
+                                    var preenchimento = PreenchedorCotacao.Preencher(caminhoComparacao, campos);
+                                    precosPreenchidos += preenchimento.PrecosPreenchidos;
+                                    fornecedoresCriados += preenchimento.FornecedoresCriados;
+                                    pendenciasPreenchimento.AddRange(preenchimento.Pendencias.Select(p =>
+                                        $"{Path.GetFileName(arquivos[i])}: {p}"));
+                                }
+                                catch (Exception ex)
+                                {
+                                    falhasPreenchimento.Add($"{Path.GetFileName(arquivos[i])}: {ex.Message}");
+                                }
+                                try
+                                {
+                                    lblStatus.Text = $"Gravando não encontrados do PDF {i + 1}/{arquivos.Length}...";
+                                    await Task.Yield();
+                                    registrosPersistidos += naoEncontradosRepository.SalvarLote(lojaProcessamento,
+                                        mesProcessamento, anoProcessamento, campos, DateTime.Now);
+                                }
+                                catch (Exception ex)
+                                {
+                                    falhasPersistencia.Add($"{Path.GetFileName(arquivos[i])}: {ex.Message}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                falhas.Add($"{Path.GetFileName(arquivos[i])}: comparação não concluída. " +
+                                    $"{ex.Message}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            falhas.Add($"{Path.GetFileName(arquivos[i])}: {ex.Message}");
+                        }
+                    }
+                    string mensagem = $"{salvos} de {arquivos.Length} PDF(s) extraído(s) e " +
+                        $"{camposSalvos} JSON(s) _campos salvo(s) em:\n{pasta}";
+                    mensagem += $"\n\nOcorrências não encontradas gravadas/atualizadas no banco: {registrosPersistidos}.";
+                    mensagem += $"\nPreços preenchidos: {precosPreenchidos}. Fornecedores criados: {fornecedoresCriados}.";
+                    if (pendenciasPreenchimento.Count > 0)
+                        mensagem += "\n\nPendências de preenchimento:\n" + string.Join("\n", pendenciasPreenchimento);
+                    if (falhasPreenchimento.Count > 0)
+                        mensagem += "\n\nFalhas ao salvar a planilha:\n" + string.Join("\n\n", falhasPreenchimento);
+                    if (pendentes > 0)
+                        mensagem += $"\n\n{pendentes} insumo(s) preservados com preço ou unidade indeterminados (null).";
+                    if (falhas.Count > 0)
+                        mensagem += "\n\nPDFs que precisam de nova tentativa:\n" + string.Join("\n\n", falhas);
+                    if (falhasPersistencia.Count > 0)
+                        mensagem += "\n\nFalhas ao gravar não encontrados no banco:\n" +
+                            string.Join("\n\n", falhasPersistencia);
+                    lblStatus.Text = $"Extração finalizada.\n\nPDFs extraídos: {salvos}\n" +
+                        $"JSONs _campos salvos: {camposSalvos}\n" +
+                        $"Falhas: {falhas.Count + falhasPersistencia.Count + falhasPreenchimento.Count}";
+                    resumoConclusao = mensagem;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Extração de insumos", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    painelConteudo.Controls.Remove(telaEspera);
+                    telaEspera.Dispose();
+                    tela.Visible = true;
+                    tela.Enabled = true;
+                    painelMenu.Enabled = true;
+                    UseWaitCursor = false;
+                }
+                if (resumoConclusao != null)
+                    AbrirTelaConcluido(lojaProcessamento, mesProcessamento, anoProcessamento,
+                        caminhoComparacao, resumoConclusao,
+                        falhas.Count > 0 || falhasPersistencia.Count > 0 || pendentes > 0 ||
+                        falhasPreenchimento.Count > 0 || pendenciasPreenchimento.Count > 0);
+            };
 
             AjustarContainerATela(tela);
             void AjustarLayoutNovaCotacao()
@@ -1906,418 +1953,113 @@ namespace COTACAO_INSUMO
         }
 
         // =========================================================
-        // PROCESSANDO
+        // CONCLUSÃO
         // =========================================================
 
-        private void CriarEstruturaPeriodo(string empresa, int mes, int ano)
+        private void AbrirTelaConcluido(string empresa, int mes, int ano, string caminhoPlanilha,
+            string resumo, bool comPendencias)
         {
-            if (
-                string.IsNullOrWhiteSpace(
-                    empresa
-                )
-            )
-                return;
-
-            string pasta =
-                ObterPastaPeriodo(
-                    empresa,
-                    mes,
-                    ano
-                );
-
-            Directory.CreateDirectory(
-                pasta
-            );
-
-            Directory.CreateDirectory(
-                Path.Combine(
-                    pasta,
-                    "NaoEncontrados"
-                )
-            );
-        }
-
-        private void CriarArquivoPlanilhaPeriodo()
-        {
-            if (
-                string.IsNullOrWhiteSpace(
-                    caminhoExcelSelecionado
-                )
-            )
-                return;
-
-            string destino =
-                ObterCaminhoPlanilhaPeriodo(
-                    lojaSelecionada,
-                    mesSelecionado,
-                    anoSelecionado
-                );
-
-            string pasta =
-                Path.GetDirectoryName(destino)!;
-
-            Directory.CreateDirectory(pasta);
-
-            File.Copy(
-                caminhoExcelSelecionado,
-                destino,
-                true
-            );
-        }
-
-        // =========================================================
-        // CONCLUÍDO
-        // =========================================================
-
-        private void AbrirTelaConcluido()
-        {
-            telaAtual =
-                TelaAtual.Concluido;
-
+            telaAtual = TelaAtual.Concluido;
             LimparConteudo();
+            Panel tela = CriarContainer(700);
 
-            Panel tela =
-                CriarContainer(700);
+            Label icone = new()
+            {
+                Text = comPendencias ? "!" : "✓",
+                AutoSize = false,
+                Size = new Size(38, 38),
+                Location = new Point(15, 16),
+                ForeColor = comPendencias ? Color.Orange : Color.LimeGreen,
+                Font = new Font("Segoe UI", 22F, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            Label titulo = CriarTitulo("Processamento concluído");
+            titulo.Location = new Point(65, 15);
+            Label subtitulo = CriarTexto(comPendencias
+                ? "O processamento terminou com pendências. Confira o resumo abaixo."
+                : "A leitura, a comparação e a gravação foram concluídas com sucesso.");
+            subtitulo.Location = new Point(65, 53);
 
-            Label titulo =
-                CriarTitulo(
-                    "Processamento concluído"
-                );
+            Panel informacoes = CriarCard(850, 240);
+            informacoes.Location = new Point(10, 105);
+            informacoes.AutoScroll = true;
+            Label detalhes = new()
+            {
+                Text = $"{empresa} > {ano}-{mes:00}\n\n" + resumo,
+                AutoSize = true,
+                MaximumSize = new Size(780, 0),
+                ForeColor = Color.WhiteSmoke,
+                Location = new Point(22, 20)
+            };
+            informacoes.Controls.Add(detalhes);
 
-            titulo.Location =
-                new Point(65, 15);
-
-            Label subtitulo =
-                CriarTexto(
-                    "A cotação foi processada e salva com sucesso."
-                );
-
-            subtitulo.Location =
-                new Point(65, 53);
-
-            Label iconeSucesso =
-                new Label
+            Button visualizarPlanilha = CriarBotao("Visualizar planilha de cotação", 285, 44);
+            visualizarPlanilha.Location = new Point(10, 375);
+            visualizarPlanilha.Click += (s, e) =>
+            {
+                if (!File.Exists(caminhoPlanilha))
                 {
-                    Text = "✓",
-                    AutoSize = false,
-                    Width = 38,
-                    Height = 38,
-
-                    Location =
-                        new Point(15, 16),
-
-                    ForeColor =
-                        Color.LimeGreen,
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            22F,
-                            FontStyle.Bold
-                        ),
-
-                    TextAlign =
-                        ContentAlignment.MiddleCenter
-                };
-
-            Panel informacoes =
-                CriarCard(850, 120);
-
-            informacoes.Location =
-                new Point(10, 105);
-
-            Label pasta =
-                new Label
-                {
-                    Text =
-                        $"Pasta interna: {lojaSelecionada}  >  " +
-                        $"{anoSelecionado}-{mesSelecionado:00}",
-
-                    AutoSize = true,
-
-                    ForeColor =
-                        Color.WhiteSmoke,
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            10F,
-                            FontStyle.Bold
-                        ),
-
-                    Location =
-                        new Point(22, 27)
-                };
-
-            Label arquivo =
-                new Label
-                {
-                    Text =
-                        $"Arquivo: Cotacao_{lojaSelecionada}_" +
-                        $"{anoSelecionado}-{mesSelecionado:00}.xlsx",
-
-                    AutoSize = true,
-
-                    ForeColor =
-                        corTextoSecundario,
-
-                    Location =
-                        new Point(22, 68)
-                };
-
-            informacoes.Controls.Add(pasta);
-            informacoes.Controls.Add(arquivo);
-
-            // -----------------------------------------------------
-            // CARD PREENCHIDOS
-            // -----------------------------------------------------
-
-            Panel cardPreenchidos =
-                new Panel
-                {
-                    Width = 405,
-                    Height = 115,
-
-                    Location =
-                        new Point(10, 250),
-
-                    BackColor =
-                        Color.FromArgb(
-                            8,
-                            47,
-                            88
-                        )
-                };
-
-            Label lblPreenchidosTitulo =
-                new Label
-                {
-                    Text = "Insumos preenchidos",
-                    AutoSize = true,
-
-                    ForeColor =
-                        Color.FromArgb(
-                            90,
-                            175,
-                            255
-                        ),
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            11F
-                        ),
-
-                    Location =
-                        new Point(18, 16)
-                };
-
-            Label lblPreenchidosNumero =
-                new Label
-                {
-                    Text =
-                        ultimoTotalInsumosPreenchidos
-                        .ToString(),
-
-                    AutoSize = true,
-
-                    ForeColor =
-                        Color.FromArgb(
-                            115,
-                            190,
-                            255
-                        ),
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            28F,
-                            FontStyle.Bold
-                        ),
-
-                    Location =
-                        new Point(18, 43)
-                };
-
-            cardPreenchidos.Controls.Add(
-                lblPreenchidosTitulo
-            );
-
-            cardPreenchidos.Controls.Add(
-                lblPreenchidosNumero
-            );
-
-            // -----------------------------------------------------
-            // CARD NÃO ENCONTRADOS
-            // -----------------------------------------------------
-
-            Panel cardNaoEncontrados =
-                new Panel
-                {
-                    Width = 405,
-                    Height = 115,
-
-                    Location =
-                        new Point(430, 250),
-
-                    BackColor =
-                        Color.FromArgb(
-                            65,
-                            39,
-                            0
-                        )
-                };
-
-            Label lblNaoTitulo =
-                new Label
-                {
-                    Text =
-                        "Insumos não localizados",
-
-                    AutoSize = true,
-
-                    ForeColor =
-                        Color.FromArgb(
-                            255,
-                            185,
-                            0
-                        ),
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            11F
-                        ),
-
-                    Location =
-                        new Point(18, 16)
-                };
-
-            Label lblNaoNumero =
-                new Label
-                {
-                    Text =
-                        ultimoTotalInsumosNaoEncontrados
-                        .ToString(),
-
-                    AutoSize = true,
-
-                    ForeColor =
-                        Color.FromArgb(
-                            255,
-                            190,
-                            0
-                        ),
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            28F,
-                            FontStyle.Bold
-                        ),
-
-                    Location =
-                        new Point(18, 43)
-                };
-
-            cardNaoEncontrados.Controls.Add(
-                lblNaoTitulo
-            );
-
-            cardNaoEncontrados.Controls.Add(
-                lblNaoNumero
-            );
-
-            // -----------------------------------------------------
-            // BOTÕES
-            // -----------------------------------------------------
-
-            Button consultar =
-                CriarBotao(
-                    "Consultar cotação",
-                    200,
-                    44
-                );
-
-            consultar.Location =
-                new Point(10, 400);
-
-            consultar.Click +=
-                (s, e) =>
-                {
-                    lojaConsultaSelecionada =
-                        lojaSelecionada;
-
-                    AbrirTelaConsultar();
-                };
-
-            Button verNaoEncontrados =
-                CriarBotao(
-                    "Ver não localizados",
-                    200,
-                    44
-                );
-
-            verNaoEncontrados.Location =
-                new Point(225, 400);
-
-            verNaoEncontrados.Click +=
-                (s, e) =>
-                {
-                    lojaConsultaSelecionada =
-                        lojaSelecionada;
-
-                    AbrirTelaNaoEncontrados();
-                };
-
-            Button adicionarMaisPdfs =
-                CriarBotaoAzul(
-                    "Adicionar mais PDFs",
-                    200,
-                    44
-                );
-
-            adicionarMaisPdfs.Location =
-                new Point(440, 400);
-
-            adicionarMaisPdfs.Click +=
-                (s, e) =>
-                {
-                    PrepararComplementoCotacao();
-
-                    AbrirTelaNovaCotacao();
-                };
-
-            Button novaCotacao =
-                CriarBotao(
-                    "Nova cotação",
-                    180,
-                    44
-                );
-
-            novaCotacao.Location =
-                new Point(655, 400);
-
-            novaCotacao.Click +=
-                (s, e) =>
-                {
-                    PrepararNovaCotacao();
-
-                    AbrirTelaNovaCotacao();
-                };
-
-            tela.Controls.Add(iconeSucesso);
-            tela.Controls.Add(titulo);
-            tela.Controls.Add(subtitulo);
-            tela.Controls.Add(informacoes);
-            tela.Controls.Add(cardPreenchidos);
-            tela.Controls.Add(cardNaoEncontrados);
-            tela.Controls.Add(consultar);
-            tela.Controls.Add(verNaoEncontrados);
-            tela.Controls.Add(adicionarMaisPdfs);
-            tela.Controls.Add(novaCotacao);
-
+                    MessageBox.Show(this, "A planilha desta cotação não foi encontrada.",
+                        "Arquivo não encontrado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                lojaConsultaSelecionada = empresa;
+                anoFiltroConsulta = ano;
+                AbrirTabelaCotacaoArquivo(caminhoPlanilha, empresa, mes, ano);
+            };
+            Button verNaoEncontrados = CriarBotao("Visualizar não localizados", 265, 44);
+            verNaoEncontrados.Location = new Point(310, 375);
+            verNaoEncontrados.Click += (s, e) =>
+            {
+                lojaConsultaSelecionada = empresa;
+                anoFiltroConsulta = ano;
+                mesSelecionado = mes;
+                anoSelecionado = ano;
+                AbrirTelaNaoEncontrados();
+            };
+            tela.Controls.AddRange([icone, titulo, subtitulo, informacoes, visualizarPlanilha, verNaoEncontrados]);
             painelConteudo.Controls.Add(tela);
+        }
+
+        // =========================================================
+        // TELA DE ESPERA
+        // =========================================================
+
+        private Panel CriarTelaEsperaProcessamento(out Label lblStatus)
+        {
+            Panel tela = CriarContainer(650);
+            Label titulo = CriarTitulo("Processando cotações...");
+            titulo.Location = new Point(10, 10);
+
+            Label descricao = CriarTexto("Aguarde enquanto a IA analisa os PDFs e preenche a cotação.");
+            descricao.Location = new Point(10, 50);
+
+            ProgressBar progresso = new()
+            {
+                Location = new Point(10, 90),
+                Width = 800,
+                Height = 20,
+                Style = ProgressBarStyle.Marquee,
+                MarqueeAnimationSpeed = 30
+            };
+            Panel card = CriarCard(800, 230);
+            card.Location = new Point(10, 135);
+            lblStatus = new Label
+            {
+                Text = "Preparando arquivos...",
+                AutoSize = false,
+                Width = 750,
+                Height = 180,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 11F),
+                Location = new Point(20, 20)
+            };
+            card.Controls.Add(lblStatus);
+            tela.Controls.Add(titulo);
+            tela.Controls.Add(descricao);
+            tela.Controls.Add(progresso);
+            tela.Controls.Add(card);
+            return tela;
         }
 
         private void PrepararNovaCotacao()
@@ -2333,27 +2075,7 @@ namespace COTACAO_INSUMO
             anoSelecionado =
                 DateTime.Now.Year;
 
-            ultimoTotalInsumosPreenchidos = 0;
-            ultimoTotalInsumosNaoEncontrados = 0;
         }
-
-        private void PrepararComplementoCotacao()
-        {
-            // mantém loja, mês e ano
-            // porque vamos complementar a cotação existente
-
-            pdfsSelecionados.Clear();
-
-            // Excel antigo também desaparece
-            caminhoExcelSelecionado = "";
-
-            ultimoTotalInsumosPreenchidos = 0;
-            ultimoTotalInsumosNaoEncontrados = 0;
-        }
-
-        // =========================================================
-        // CONSULTAR
-        // =========================================================
 
         private void ExecutarExportacaoPdf(string tipo, string empresa, int mes, int ano,
             Func<(string[] Cabecalhos, List<string[]> Linhas)> carregar)
@@ -2487,7 +2209,7 @@ namespace COTACAO_INSUMO
                         .Where(f => !Path.GetFileName(f).StartsWith("~$") && !Path.GetFileName(f).StartsWith("temp_"))
                         .OrderBy(f => f).FirstOrDefault();
                     if (caminho == null) throw new InvalidOperationException("A planilha deste mês ainda não foi gerada.");
-                    using var workbook = new XLWorkbook(caminho);
+                    using var workbook = ArquivoPlanilhaExcel.Abrir(caminho);
                     var planilha = workbook.Worksheets.First();
                     var range = planilha.RangeUsed() ?? throw new InvalidOperationException("A planilha está vazia.");
                     int primeira = range.FirstRow().RowNumber(), ultima = range.LastRow().RowNumber();
@@ -3475,6 +3197,34 @@ namespace COTACAO_INSUMO
                         new Point(390, 530)
                 };
 
+            var chkGravarJson = new CheckBox
+            {
+                Text = "Ligar gravação arquivo JSON de retorno IA",
+                Checked = gravarJsonIA,
+                AutoSize = true,
+                ForeColor = Color.White,
+                Location = new Point(10, 595)
+            };
+            bool restaurandoGravacaoJson = false;
+            chkGravarJson.CheckedChanged += (s, e) =>
+            {
+                if (restaurandoGravacaoJson) return;
+                try
+                {
+                    configuracoesIA.SalvarGravacaoJson(chkGravarJson.Checked);
+                    gravarJsonIA = chkGravarJson.Checked;
+                }
+                catch (Exception)
+                {
+                    restaurandoGravacaoJson = true;
+                    chkGravarJson.Checked = gravarJsonIA;
+                    restaurandoGravacaoJson = false;
+                    MessageBox.Show("Não foi possível salvar a opção de gravação JSON.",
+                        "Configurações", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            tela.Controls.Add(chkGravarJson);
+
             // =========================================================
             // STATUS
             // =========================================================
@@ -4084,17 +3834,14 @@ namespace COTACAO_INSUMO
 
                         "2. Informe o mês e o ano.\r\n\r\n" +
 
-                        "3. Em uma cotação nova, selecione o Excel-base.\r\n\r\n" +
+                        "3. Se a cotação do período ainda não existir, selecione uma planilha-base.\r\n\r\n" +
 
-                        "4. Se o período já existir, não é necessário selecionar o Excel novamente.\r\n\r\n" +
+                        "4. A cotação será criada ou atualizada na pasta da unidade e do ano-mês.\r\n\r\n" +
 
                         "5. Adicione apenas os novos PDFs dos fornecedores.\r\n\r\n" +
 
-                        "6. Clique em Processar cotações.\r\n\r\n" +
-
-                        "7. Depois do processamento, os PDFs e o Excel selecionado são removidos da tela.\r\n\r\n" +
-
-                        "8. A planilha existente será reutilizada automaticamente quando o período já existir."
+                        "6. Clique em Processar cotações para extrair os insumos dos PDFs.\r\n\r\n" +
+                        "7. A cotação será preenchida com os preços tratados. Se a gravação JSON estiver ligada nas Configurações, será salvo apenas o JSON _campos por PDF na pasta do período."
                 };
 
             tela.Controls.Add(titulo);
@@ -4310,6 +4057,7 @@ namespace COTACAO_INSUMO
             DataGridView dgv =
                 new DataGridView
                 {
+                    Name = "tabelaCotacao",
                     Dock = DockStyle.Fill,
 
                     BackgroundColor =
@@ -4480,7 +4228,7 @@ namespace COTACAO_INSUMO
             try
             {
                 using XLWorkbook workbook =
-                    new XLWorkbook(caminho);
+                    ArquivoPlanilhaExcel.Abrir(caminho);
 
                 IXLWorksheet planilha =
                     workbook.Worksheets.First();
@@ -4675,13 +4423,13 @@ namespace COTACAO_INSUMO
                                         .GetValue<decimal>();
 
                                 // Somente fornecedores
-                                // devem usar 3 casas decimais
+                                // devem usar 4 casas decimais
                                 if (EhColunaFornecedorGrid(dgv.Columns[coluna - 1]))
                                 {
                                     valor =
                                         Math.Round(
                                             valor,
-                                            3,
+                                            4,
                                             MidpointRounding.AwayFromZero
                                         );
 
@@ -4689,7 +4437,7 @@ namespace COTACAO_INSUMO
                                         valor;
 
                                     celulaGrid.Style.Format =
-                                        "0.000";
+                                        "0.0000";
                                 }
                                 else
                                 {
@@ -4857,7 +4605,7 @@ namespace COTACAO_INSUMO
                             atualizandoAutomaticamente =
                                 true;
 
-                            FormatarValorGridTresCasas(
+                            FormatarValorGridQuatroCasas(
                                 dgv,
                                 e.RowIndex,
                                 e.ColumnIndex
@@ -5134,6 +4882,9 @@ namespace COTACAO_INSUMO
 
             ContextMenuStrip menu =
                 new ContextMenuStrip();
+
+            menu.Items.Add("Localizar... (Ctrl + L)", null,
+                (s, e) => LocalizarNaCotacao.Abrir(this, dgv));
 
             ToolStripMenuItem pintar =
                 new ToolStripMenuItem(
@@ -5729,7 +5480,7 @@ namespace COTACAO_INSUMO
 
                 using (
                     XLWorkbook workbook =
-                        new XLWorkbook(caminho)
+                        ArquivoPlanilhaExcel.Abrir(caminho)
                 )
                 {
                     IXLWorksheet planilha =
@@ -5840,7 +5591,7 @@ namespace COTACAO_INSUMO
                                 numero =
                                     Math.Round(
                                         numero,
-                                        3,
+                                        4,
                                         MidpointRounding.AwayFromZero
                                     );
 
@@ -5853,7 +5604,7 @@ namespace COTACAO_INSUMO
                                         .Style
                                         .NumberFormat
                                         .Format =
-                                        "0.000";
+                                        "0.0000";
                                 }
                             }
 
@@ -5914,6 +5665,7 @@ namespace COTACAO_INSUMO
                     );
                 }
 
+                ArquivoPlanilhaExcel.ValidarArquivoTemporario(caminhoTemporario);
                 // Neste ponto o ClosedXML já liberou os arquivos.
 
                 // =====================================================
@@ -6057,318 +5809,6 @@ namespace COTACAO_INSUMO
                 largura = 300;
 
             return largura;
-        }
-
-        private async Task ProcessarCotacaoComIAAsync()
-        {
-            string empresaProcessamento = lojaSelecionada;
-            int mesProcessamento = mesSelecionado;
-            int anoProcessamento = anoSelecionado;
-            // Faz cópia para evitar modificação da lista
-            // enquanto estamos processando.
-            List<string> pdfsDoProcessamento =
-                pdfsSelecionados.ToList();
-
-            string excelOriginal =
-                caminhoExcelSelecionado;
-
-            string caminhoPlanilhaDestino =
-                ObterCaminhoPlanilhaPeriodo(
-                    empresaProcessamento,
-                    mesProcessamento,
-                    anoProcessamento
-                );
-
-            // =========================================================
-            // TELA DE PROCESSAMENTO
-            // =========================================================
-
-            LimparConteudo();
-
-            Panel tela =
-                CriarContainer(
-                    650
-                );
-
-            Label titulo =
-                CriarTitulo(
-                    "Processando cotações..."
-                );
-
-            titulo.Location =
-                new Point(10, 10);
-
-            Label descricao =
-                CriarTexto(
-                    "Aguarde enquanto a IA analisa os PDFs e atualiza a planilha."
-                );
-
-            descricao.Location =
-                new Point(10, 50);
-
-            ProgressBar progresso =
-                new ProgressBar
-                {
-                    Location =
-                        new Point(
-                            10,
-                            90
-                        ),
-
-                    Width =
-                        800,
-
-                    Height =
-                        20,
-
-                    Style =
-                        ProgressBarStyle.Marquee,
-
-                    MarqueeAnimationSpeed =
-                        30
-                };
-
-            Panel card =
-                CriarCard(
-                    800,
-                    230
-                );
-
-            card.Location =
-                new Point(
-                    10,
-                    135
-                );
-
-            Label lblStatus =
-                new Label
-                {
-                    Text =
-                        "Preparando arquivos...",
-
-                    AutoSize =
-                        false,
-
-                    Width =
-                        750,
-
-                    Height =
-                        180,
-
-                    ForeColor =
-                        Color.White,
-
-                    Font =
-                        new Font(
-                            "Segoe UI",
-                            11F
-                        ),
-
-                    Location =
-                        new Point(
-                            20,
-                            20
-                        )
-                };
-
-            card.Controls.Add(
-                lblStatus
-            );
-
-            tela.Controls.Add(
-                titulo
-            );
-
-            tela.Controls.Add(
-                descricao
-            );
-
-            tela.Controls.Add(
-                progresso
-            );
-
-            tela.Controls.Add(
-                card
-            );
-
-            painelConteudo.Controls.Add(
-                tela
-            );
-
-            try
-            {
-                // =====================================================
-                // 1. PREPARAR PLANILHA
-                // =====================================================
-
-                lblStatus.Text =
-                    "1/5  Preparando a planilha...";
-
-                await Task.Yield();
-
-                byte[]? planilhaAntes = File.Exists(caminhoPlanilhaDestino) ? File.ReadAllBytes(caminhoPlanilhaDestino) : null;
-                var itensAntes = naoEncontradosRepository.Consultar(empresaProcessamento, mesProcessamento, anoProcessamento);
-                processamentoEmAndamento = true;
-                CriarEstruturaPeriodo(empresaProcessamento, mesProcessamento, anoProcessamento);
-
-                bool planilhaJaExiste =
-                    File.Exists(
-                        caminhoPlanilhaDestino
-                    );
-
-                if (!planilhaJaExiste)
-                {
-                    if (
-                        string.IsNullOrWhiteSpace(
-                            excelOriginal
-                        ) ||
-                        !File.Exists(
-                            excelOriginal
-                        )
-                    )
-                    {
-                        throw new Exception(
-                            "O Excel-base da nova cotação não foi encontrado."
-                        );
-                    }
-
-                    File.Copy(
-                        excelOriginal,
-                        caminhoPlanilhaDestino,
-                        true
-                    );
-                }
-
-                // =====================================================
-                // 2. IA
-                // =====================================================
-
-                lblStatus.Text =
-                    "2/5  Conectando à OpenAI...\n\n" +
-                    $"Modelo: {modeloIA}";
-
-                await Task.Yield();
-
-                IAgenteIA iaService =
-                    AgenteIAFactory.Criar(
-                    provedorIA,
-                    apiKeyIA,
-                    modeloIA,
-                    timeoutIA
-                    );
-
-                CotacaoProcessor processor =
-                    new CotacaoProcessor(
-                        iaService
-                    );
-
-                // =====================================================
-                // 3. ANALISAR PDFs
-                // =====================================================
-
-                lblStatus.Text =
-                    "3/5  Analisando os PDFs dos fornecedores...\n\n" +
-                    $"{pdfsDoProcessamento.Count} arquivo(s) serão analisados.\n\n" +
-                    "A IA está identificando fornecedores, produtos e correspondências.";
-
-                await Task.Yield();
-
-                ResultadoProcessamento resultado =
-                    await processor.ProcessarAsync(
-                        caminhoPlanilhaDestino,
-                        pdfsDoProcessamento
-                    );
-
-                // =====================================================
-                // 4. CONTADORES
-                // =====================================================
-
-                lblStatus.Text =
-                    "4/5  Registrando os resultados...";
-
-                await Task.Yield();
-
-                ultimoTotalInsumosPreenchidos =
-                    resultado.TotalPreenchidos;
-
-                ultimoTotalInsumosNaoEncontrados =
-                    resultado.NaoEncontrados.Count;
-
-                // =====================================================
-                // NÃO ENCONTRADOS
-                // =====================================================
-
-                naoEncontradosRepository.SalvarLote(empresaProcessamento, mesProcessamento,
-                    anoProcessamento, resultado.NaoEncontrados, DateTime.Now);
-                byte[] planilhaDepois = File.ReadAllBytes(caminhoPlanilhaDestino);
-                var itensDepois = naoEncontradosRepository.Consultar(empresaProcessamento, mesProcessamento, anoProcessamento);
-                RegistrarDesfazer(() =>
-                {
-                    if (planilhaAntes == null) { if (File.Exists(caminhoPlanilhaDestino)) File.Delete(caminhoPlanilhaDestino); }
-                    else File.WriteAllBytes(caminhoPlanilhaDestino, planilhaAntes);
-                    naoEncontradosRepository.Restaurar(itensAntes, empresaProcessamento, mesProcessamento, anoProcessamento);
-                    lojaConsultaSelecionada = empresaProcessamento; anoFiltroConsulta = anoProcessamento;
-                    AbrirTelaConsultar();
-                }, () =>
-                {
-                    File.WriteAllBytes(caminhoPlanilhaDestino, planilhaDepois);
-                    naoEncontradosRepository.Restaurar(itensDepois, empresaProcessamento, mesProcessamento, anoProcessamento);
-                    lojaConsultaSelecionada = empresaProcessamento; anoFiltroConsulta = anoProcessamento;
-                    AbrirTelaConsultar();
-                });
-                processamentoEmAndamento = false;
-
-                // =====================================================
-                // 5. FINAL
-                // =====================================================
-
-                lblStatus.Text =
-                    "5/5  Finalizando a cotação...\n\n" +
-                    $"Preenchidos: {ultimoTotalInsumosPreenchidos}\n" +
-                    $"Não encontrados: {ultimoTotalInsumosNaoEncontrados}";
-
-                await Task.Delay(
-                    500
-                );
-
-                // =====================================================
-                // LIMPAR SOMENTE DEPOIS DE SUCESSO
-                // =====================================================
-
-                pdfsSelecionados.Clear();
-
-                caminhoExcelSelecionado =
-                    "";
-
-                // =====================================================
-                // CONCLUÍDO
-                // =====================================================
-
-                AbrirTelaConcluido();
-            }
-            catch (Exception ex)
-            {
-                processamentoEmAndamento = false;
-                progresso.Style =
-                    ProgressBarStyle.Blocks;
-
-                progresso.Value =
-                    0;
-
-                lblStatus.Text =
-                    "O processamento foi interrompido.";
-
-                if (ex is ErroIAException or RespostaIAException or HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
-                    ModalErroIA.Exibir(this, ex, provedorIA, modeloIA, arquivosPreservados: true);
-                else
-                    MessageBox.Show(this, "Não foi possível processar a cotação.\n\n" + ex.Message +
-                        "\n\nOs PDFs selecionados foram mantidos para você tentar novamente.",
-                        "Erro no processamento", MessageBoxButtons.OK, MessageBoxIcon.Error);
-
-                // IMPORTANTE:
-                // não limpamos PDF/Excel quando dá erro.
-                AbrirTelaNovaCotacao();
-            }
         }
 
         private void Form1_Load(

@@ -69,6 +69,21 @@ public sealed class ConfiguracaoIARepository
         }
     }
 
+    public bool CarregarGravacaoJson()
+    {
+        using var banco = new Banco(caminho);
+        using var consulta = banco.Preparar("SELECT valor FROM configuracao_geral WHERE nome = 'gravar_json_ia';");
+        return consulta.Ler() && consulta.Texto(0) == "1";
+    }
+
+    public void SalvarGravacaoJson(bool habilitada)
+    {
+        using var banco = new Banco(caminho);
+        using var comando = banco.Preparar("INSERT INTO configuracao_geral (nome, valor) VALUES ('gravar_json_ia', ?1) ON CONFLICT(nome) DO UPDATE SET valor = excluded.valor;");
+        comando.Vincular(1, habilitada ? "1" : "0");
+        comando.Ler();
+    }
+
     public Action CapturarRestauracao()
     {
         var registros = new List<string[]>();
@@ -120,6 +135,7 @@ public sealed class ConfiguracaoIARepository
                     );
                     """);
                 Executar("CREATE UNIQUE INDEX IF NOT EXISTS ux_provedor_selecionado ON configuracao_ia(selecionado) WHERE selecionado = 1;");
+                Executar("CREATE TABLE IF NOT EXISTS configuracao_geral (nome TEXT PRIMARY KEY NOT NULL, valor TEXT NOT NULL);");
                 Executar("PRAGMA user_version = 1;");
             }
             catch { Dispose(); throw; }
