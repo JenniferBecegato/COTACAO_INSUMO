@@ -31,6 +31,9 @@ namespace COTACAO_INSUMO
         // 5
         public decimal Quantidade { get; set; }
 
+        // Unidade da quantidade da linha, que pode diferir da base do preço unitário.
+        public string UnidadeQuantidade { get; set; } = "";
+
         public decimal ValorUnitario { get; set; }
 
         public decimal ValorTotal { get; set; }

@@ -3505,84 +3505,96 @@ namespace COTACAO_INSUMO
             // FUNÇÃO LOCAL: CARREGAR PROVEDOR
             // =========================================================
 
+            var catalogo = new CatalogoModelosIA();
+            CancellationTokenSource? consultaModelos = null;
+            bool carregandoProvedor = false;
+            Label lblModelos = CriarTexto("Informe a chave para consultar os modelos.");
+            lblModelos.Location = new Point(390, 176);
+            lblModelos.AutoSize = false;
+            lblModelos.Size = new Size(360, 28);
+            lblModelos.Font = new Font("Segoe UI", 8F);
+            Button btnAtualizarModelos = CriarBotao("Atualizar modelos", 165, 30);
+            btnAtualizarModelos.Location = new Point(585, 275);
+            tela.Controls.Add(lblModelos);
+            tela.Controls.Add(btnAtualizarModelos);
+
+            void ExibirModelos(string[] modelos, string? selecionado)
+            {
+                cmbModelo.Items.Clear();
+                cmbModelo.Items.AddRange(modelos.Cast<object>().ToArray());
+                if (!string.IsNullOrEmpty(selecionado))
+                {
+                    if (!cmbModelo.Items.Contains(selecionado)) cmbModelo.Items.Add(selecionado);
+                    cmbModelo.SelectedItem = selecionado;
+                }
+            }
+
+            async Task AtualizarModelosAsync(bool aguardarDigitacao = false)
+            {
+                consultaModelos?.Cancel();
+                var consulta = new CancellationTokenSource();
+                consultaModelos = consulta;
+                string provedor = cmbProvedor.Text;
+                string chave = txtApi.Text.Trim();
+                string? selecionado = cmbModelo.SelectedItem?.ToString();
+                var cache = catalogo.LerCache(provedor, chave);
+                ExibirModelos(cache, selecionado);
+                if (chave.Length == 0)
+                {
+                    lblModelos.Text = "Informe a chave para consultar os modelos.";
+                    lblModelos.ForeColor = Color.Gray;
+                    consultaModelos = null;
+                    consulta.Dispose();
+                    return;
+                }
+                lblModelos.Text = "Consultando modelos...";
+                lblModelos.ForeColor = Color.Gray;
+                try
+                {
+                    if (aguardarDigitacao) await Task.Delay(800, consulta.Token);
+                    var modelos = await catalogo.ConsultarAsync(provedor, chave, consulta.Token);
+                    if (consulta.IsCancellationRequested || tela.IsDisposed) return;
+                    selecionado = cmbModelo.SelectedItem?.ToString();
+                    ExibirModelos(modelos, selecionado);
+                    lblModelos.Text = selecionado != null && !modelos.Contains(selecionado)
+                        ? "Modelo salvo ausente do catálogo. Selecione e teste outro."
+                        : $"{modelos.Length} modelos disponíveis. Selecione e teste a conexão.";
+                }
+                catch (OperationCanceledException) when (consulta.IsCancellationRequested) { }
+                catch (Exception)
+                {
+                    if (consulta.IsCancellationRequested || tela.IsDisposed) return;
+                    lblModelos.Text = cache.Length > 0
+                        ? "Consulta falhou. Exibindo a última lista salva."
+                        : "Consulta falhou. Confira a chave e tente atualizar.";
+                    lblModelos.ForeColor = Color.Orange;
+                }
+                finally
+                {
+                    if (ReferenceEquals(consultaModelos, consulta)) consultaModelos = null;
+                    consulta.Dispose();
+                }
+            }
+            tela.Disposed += (s, e) => consultaModelos?.Cancel();
+            btnAtualizarModelos.Click += async (s, e) => await AtualizarModelosAsync();
+            txtApi.TextChanged += async (s, e) =>
+            {
+                if (!carregandoProvedor) await AtualizarModelosAsync(true);
+            };
+
             void CarregarProvedor()
             {
-                string provedor =
-                    cmbProvedor.SelectedItem?
-                        .ToString()
-                    ?? "";
-
+                carregandoProvedor = true;
+                consultaModelos?.Cancel();
+                string provedor = cmbProvedor.SelectedItem?.ToString() ?? "";
                 cmbModelo.Items.Clear();
-
-                // -----------------------------------------------------
-                // OPENAI
-                // -----------------------------------------------------
-
-                if (provedor == "OpenAI")
+                txtEndpoint.Text = provedor switch
                 {
-                    cmbModelo.Items.AddRange(
-                        new object[]
-                        {
-                    "gpt-5.6-sol",
-                    "gpt-6-luna",
-                    "gpt-6-sol"
-                        }
-                    );
-
-                    txtEndpoint.Text =
-                        "https://api.openai.com/v1";
-                }
-
-                // -----------------------------------------------------
-                // CLAUDE
-                // -----------------------------------------------------
-
-                else if (
-                    provedor ==
-                    "Claude (Anthropic)"
-                )
-                {
-                    cmbModelo.Items.AddRange(
-                        new object[]
-                        {
-                    "claude-sonnet",
-                    "claude-opus",
-                    "claude-haiku"
-                        }
-                    );
-
-                    txtEndpoint.Text =
-                        "https://api.anthropic.com";
-                }
-
-                // -----------------------------------------------------
-                // GEMINI
-                // -----------------------------------------------------
-
-                else if (
-                    provedor ==
-                    "Gemini (Google)"
-                )
-                {
-                    cmbModelo.Items.AddRange(
-                        new object[]
-                        {
-                            "gemini-3.5-flash-lite",
-                            "gemini-3.8-flash"
-                        }
-                    );
-
-                    txtEndpoint.Text =
-                        "https://generativelanguage.googleapis.com";
-                }
-
-                if (
-                    cmbModelo.Items.Count > 0
-                )
-                {
-                    cmbModelo.SelectedIndex = 0;
-                }
-
+                    "OpenAI" => "https://api.openai.com/v1",
+                    "Claude (Anthropic)" => "https://api.anthropic.com",
+                    "Gemini (Google)" => "https://generativelanguage.googleapis.com",
+                    _ => ""
+                };
                 // Cada provedor possui sua própria chave.
                 txtApi.Text = "";
                 try
@@ -3609,6 +3621,8 @@ namespace COTACAO_INSUMO
 
                 lblStatus.ForeColor =
                     Color.Gray;
+                carregandoProvedor = false;
+                _ = AtualizarModelosAsync();
             }
 
             // =========================================================
