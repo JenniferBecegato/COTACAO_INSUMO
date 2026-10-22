@@ -116,6 +116,7 @@ namespace COTACAO_INSUMO
 
         private int timeoutIA = 3600;
         private bool gravarJsonIA;
+        private decimal percentualMinimoMatch = ComparadorInsumos.PercentualMinimoMatch;
 
         private readonly ConfiguracaoIARepository configuracoesIA = new();
 
@@ -540,6 +541,7 @@ namespace COTACAO_INSUMO
             try
             {
                 gravarJsonIA = configuracoesIA.CarregarGravacaoJson();
+                percentualMinimoMatch = configuracoesIA.CarregarPercentualMinimoMatch();
                 ConfiguracaoIA? salva = configuracoesIA.Carregar();
                 if (salva != null)
                 {
@@ -1318,7 +1320,7 @@ namespace COTACAO_INSUMO
                         ContentAlignment.MiddleLeft,
 
                     Padding =
-                        new Padding(8, 0, 0, 0)
+                        new Padding(8, 6, 8, 6)
                 };
 
             void AtualizarAviso()
@@ -1866,7 +1868,7 @@ namespace COTACAO_INSUMO
                             {
                                 lblStatus.Text = $"Comparando insumos do PDF {i + 1}/{arquivos.Length} com a planilha...";
                                 await Task.Yield();
-                                var campos = ComparadorInsumos.Comparar(resultado, nomesPlanilha.Value);
+                                var campos = ComparadorInsumos.Comparar(resultado, nomesPlanilha.Value, percentualMinimoMatch);
                                 if (gravarJsonIA)
                                 {
                                     try
@@ -1885,7 +1887,7 @@ namespace COTACAO_INSUMO
                                 {
                                     lblStatus.Text = $"Preenchendo planilha do PDF {i + 1}/{arquivos.Length}...";
                                     await Task.Yield();
-                                    var preenchimento = PreenchedorCotacao.Preencher(caminhoComparacao, campos);
+                                    var preenchimento = PreenchedorCotacao.Preencher(caminhoComparacao, campos, percentualMinimoMatch);
                                     precosPreenchidos += preenchimento.PrecosPreenchidos;
                                     fornecedoresCriados += preenchimento.FornecedoresCriados;
                                     pendenciasPreenchimento.AddRange(preenchimento.Pendencias.Select(p =>
@@ -1972,6 +1974,11 @@ namespace COTACAO_INSUMO
                 cardLoja.Width = Math.Max(410, (largura - 10) / 2);
                 cardExcel.Left = cardLoja.Right + 10;
                 cardExcel.Width = Math.Max(460, largura - cardLoja.Width - 10);
+                lblAviso.Width = Math.Max(1, cardLoja.ClientSize.Width - 20);
+                lblAviso.Height = lblAviso.GetPreferredSize(new Size(lblAviso.Width, 0)).Height;
+                cardLoja.Height = Math.Max(220, lblAviso.Bottom + 15);
+                cardExcel.Height = cardLoja.Height;
+                cardPdfs.Top = Math.Max(cardLoja.Bottom, cardExcel.Bottom) + 15;
                 cardPdfs.Width = largura;
                 cardPdfs.Height = Math.Max(160, tela.ClientSize.Height - cardPdfs.Top - 76);
                 dgvPdfs.Width = Math.Max(1, cardPdfs.ClientSize.Width - 20);
@@ -1981,6 +1988,7 @@ namespace COTACAO_INSUMO
                     cardPdfs.Bottom + 20);
             }
             tela.Resize += (s, e) => AjustarLayoutNovaCotacao();
+            lblAviso.TextChanged += (s, e) => AjustarLayoutNovaCotacao();
             AjustarLayoutNovaCotacao();
             tela.Controls.Add(titulo);
             tela.Controls.Add(cardLoja);
@@ -3263,6 +3271,39 @@ namespace COTACAO_INSUMO
                 }
             };
             tela.Controls.Add(chkGravarJson);
+
+            tela.Controls.Add(new Label
+            {
+                Text = "Similaridade mínima dos insumos (%)",
+                AutoSize = true,
+                ForeColor = Color.White,
+                Location = new Point(390, 560)
+            });
+            var numSimilaridade = new NumericUpDown
+            {
+                Minimum = 0, Maximum = 100, DecimalPlaces = 2,
+                Value = percentualMinimoMatch,
+                Location = new Point(390, 590), Width = 100
+            };
+            bool restaurandoSimilaridade = false;
+            numSimilaridade.ValueChanged += (s, e) =>
+            {
+                if (restaurandoSimilaridade) return;
+                try
+                {
+                    configuracoesIA.SalvarPercentualMinimoMatch(numSimilaridade.Value);
+                    percentualMinimoMatch = numSimilaridade.Value;
+                }
+                catch (Exception)
+                {
+                    restaurandoSimilaridade = true;
+                    numSimilaridade.Value = percentualMinimoMatch;
+                    restaurandoSimilaridade = false;
+                    MessageBox.Show("Não foi possível salvar a similaridade mínima dos insumos.",
+                        "Configurações", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            tela.Controls.Add(numSimilaridade);
 
             // =========================================================
             // STATUS

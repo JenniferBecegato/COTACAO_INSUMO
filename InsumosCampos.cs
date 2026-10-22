@@ -41,7 +41,7 @@ public static class ConversorPrecoUnitario
 
 public static class ComparadorInsumos
 {
-    // Percentual mínimo de correspondência, configurável entre > 0 e 100.
+    // Valor padrão; a configuração aceita de 0 a 100, inclusive.
     public const decimal PercentualMinimoMatch = 75m;
 
     public static string NormalizarNome(string? nome, bool nomeDaPlanilha = false)
@@ -86,10 +86,10 @@ public static class ComparadorInsumos
         };
     }
 
-    private static void ValidarPercentual(decimal percentual)
+    public static void ValidarPercentual(decimal percentual)
     {
-        if (percentual <= 0 || percentual > 100)
-            throw new ArgumentOutOfRangeException(nameof(percentual), "O percentual deve ser maior que zero e até 100.");
+        if (percentual < 0 || percentual > 100)
+            throw new ArgumentOutOfRangeException(nameof(percentual), "O percentual deve estar entre 0 e 100.");
     }
 
     private static bool Corresponde(string a, string b, decimal percentual)

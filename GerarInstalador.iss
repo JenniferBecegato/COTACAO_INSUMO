@@ -1,4 +1,4 @@
-; Instalador do Campos Cotação — Inno Setup 6.
+﻿; Instalador do Campos Cotação — Inno Setup 6.
 ; Antes de compilar, atualize a publicação Release com todas as dependências:
 ; dotnet publish COTACAO_INSUMO.csproj -c Release -r win-x64 --self-contained true -o bin/Release/Instalador/win-x64 -p:PublishSingleFile=false -p:PublishTrimmed=false
 ; Essa pasta contém o aplicativo, suas bibliotecas e o .NET Desktop Runtime.
@@ -8,6 +8,7 @@
 #define MyAppName "Campos Cotação"
 #define MyAppPublisher "Campos"
 #define MyAppExeName "COTACAO_INSUMO.exe"
+#define MyAppIcon "Resources\Calculator.ico"
 #define ReleaseDir "bin\Release\Instalador\win-x64"
 
 #if !FileExists(SourcePath + ReleaseDir + "\COTACAO_INSUMO.exe")
@@ -17,7 +18,7 @@
   #error A publicação precisa incluir o runtime. Execute dotnet publish com --self-contained true conforme indicado no início deste arquivo.
 #endif
 
-#define MyAppVersion GetFileVersion(SourcePath + ReleaseDir + "\" + MyAppExeName)
+#define MyAppVersion GetVersionNumbersString(SourcePath + ReleaseDir + "\" + MyAppExeName)
 
 [Setup]
 AppId={{940C0D54-C14B-479D-BF81-49350228BCA3}
@@ -34,8 +35,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 OutputDir=installer\Output
 OutputBaseFilename=InstaladorCamposCotacao
-SetupIconFile=Resources\Calculator.ico
-UninstallDisplayIcon={app}\Resources\Calculator.ico
+SetupIconFile={#MyAppIcon}
+UninstallDisplayIcon={app}\{#MyAppIcon}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -53,11 +54,11 @@ Name: "desktopicon"; Description: "Criar um atalho na Área de Trabalho"; GroupD
 ; Copia integralmente a publicação Release, preservando suas subpastas.
 Source: "{#ReleaseDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Inclui o ícone mesmo quando ele não foi copiado pela publicação.
-Source: "Resources\Calculator.ico"; DestDir: "{app}\Resources"; Flags: ignoreversion
+Source: "{#MyAppIcon}"; DestDir: "{app}\Resources"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\Resources\Calculator.ico"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\Resources\Calculator.ico"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppIcon}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#MyAppIcon}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Executar {#MyAppName}"; Flags: nowait postinstall skipifsilent

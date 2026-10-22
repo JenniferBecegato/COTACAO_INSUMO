@@ -48,8 +48,10 @@ public static class PreenchedorCotacao
             !nome.Contains("QUANTIDADE") && nome != "QTD";
     }
 
-    public static ResultadoPreenchimento Preencher(string caminho, InsumosCampos dados)
+    public static ResultadoPreenchimento Preencher(string caminho, InsumosCampos dados,
+        decimal percentualMinimo = ComparadorInsumos.PercentualMinimoMatch)
     {
+        ComparadorInsumos.ValidarPercentual(percentualMinimo);
         string destino = Path.GetFullPath(caminho);
         string temporario = Path.Combine(Path.GetDirectoryName(destino)!,
             $".{Path.GetFileNameWithoutExtension(destino)}.{Guid.NewGuid():N}.tmp.xlsx");
@@ -73,7 +75,7 @@ public static class PreenchedorCotacao
                     }
                     var match = MelhorMatch(ComparadorInsumos.NormalizarNome(item.Nome),
                         estrutura.Insumos.Select(x => (x.Linha, x.Nome)),
-                        nome => ComparadorInsumos.NormalizarNome(nome, true), ComparadorInsumos.PercentualMinimoMatch);
+                        nome => ComparadorInsumos.NormalizarNome(nome, true), percentualMinimo);
                     if (match.Indice == 0)
                     {
                         pendencias.Add($"{item.Nome}: " + (match.Ambiguo ? "match de linha ambíguo." : "linha não localizada."));

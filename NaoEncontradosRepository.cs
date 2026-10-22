@@ -93,7 +93,10 @@ public sealed class NaoEncontradosRepository
                 decimal.Parse(consulta.Texto(6), CultureInfo.InvariantCulture),
                 consulta.Texto(7), consulta.Texto(8),
                 DateTime.Parse(consulta.Texto(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
-        return itens;
+        var comparador = StringComparer.Create(CultureInfo.GetCultureInfo("pt-BR"), ignoreCase: true);
+        return itens.OrderBy(item => item.Fornecedor, comparador)
+            .ThenBy(item => item.Insumo, comparador)
+            .ToList();
     }
 
     public void Restaurar(IEnumerable<ItemNaoEncontradoSalvo> itens, string? loja = null, int mes = 0, int ano = 0)

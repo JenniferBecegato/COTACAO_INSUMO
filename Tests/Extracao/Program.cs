@@ -39,7 +39,8 @@ foreach (var (cabecalho, quantidade, informada, esperada) in new[] {
     ("Preço/L", "800 ml", "ML", "Kg"),
     ("R$/KG", "50 g", "G", "Kg"),
     ("R$/G", "1 kg", "Kg", "G"),
-    ("Preço kg/l", "1.000 Cap", "Unidade", "Kg") })
+    ("Preço kg/l", "1.000 Cap", "Unidade", "Unidade"),
+    ("R$/MLH", "1.000 cápsulas", "Kg", "Milheiro") })
 {
     string resposta = JsonSerializer.Serialize(new { fornecedor = "Nutrifarm", Insumos = new[] {
         new { Nome = "ACIDO TRANEXAMICO", Preco = 3299.99m, Unidade = informada,
@@ -60,8 +61,8 @@ var fornecedorPadronizado = LeituraInsumos.InterpretarRespostaPdf("""
       {"Nome":"B","Preco":200,"Unidade":"Unidade","CabecalhoPreco":null,"QuantidadeCotada":"100 Cap","BasePrecoLinha":"Unidade"},
       {"Nome":"C","Preco":300,"Unidade":"G","CabecalhoPreco":"Preço/G","QuantidadeCotada":"50 g","BasePrecoLinha":null}]}
     """);
-Check(fornecedorPadronizado.Insumos.All(item => item.Unidade == "Kg"),
-    "Cabeçalho KG ou L deve padronizar todos os insumos do fornecedor como Kg.");
+Check(fornecedorPadronizado.Insumos.Select(item => item.Unidade).SequenceEqual(new[] { "Kg", "Unidade", "Kg" }),
+    "Cabeçalho KG ou L deve padronizar o fornecedor como Kg, exceto cápsulas por unidade.");
 Check(fornecedorPadronizado.Insumos.Select(item => item.Preco).SequenceEqual(new decimal?[] {100m, 200m, 300m}),
     "Padronização do fornecedor deve preservar os preços originais.");
 
@@ -78,6 +79,21 @@ string pasta = Path.Combine(AppContext.BaseDirectory, "teste-" + Guid.NewGuid().
 try
 {
     var configuracoesJson = new ConfiguracaoIARepository(Path.Combine(pasta, "configuracoes.db"));
+    Check(configuracoesJson.CarregarPercentualMinimoMatch() == 75m, "Similaridade padrão de 75%.");
+    foreach (decimal limite in new[] { 0m, 82.5m, 100m })
+    {
+        configuracoesJson.SalvarPercentualMinimoMatch(limite);
+        Check(new ConfiguracaoIARepository(Path.Combine(pasta, "configuracoes.db")).CarregarPercentualMinimoMatch() == limite,
+            "Similaridade deve persistir, incluindo os limites de 0 e 100%.");
+    }
+    foreach (decimal invalido in new[] { -0.01m, 100.01m })
+    {
+        bool rejeitado = false;
+        try { configuracoesJson.SalvarPercentualMinimoMatch(invalido); }
+        catch (ArgumentOutOfRangeException) { rejeitado = true; }
+        Check(rejeitado && configuracoesJson.CarregarPercentualMinimoMatch() == 100m,
+            "Percentual inválido não deve substituir a configuração salva.");
+    }
     Check(!configuracoesJson.CarregarGravacaoJson(), "Gravação JSON deve iniciar desligada.");
     configuracoesJson.SalvarGravacaoJson(true);
     Check(new ConfiguracaoIARepository(Path.Combine(pasta, "configuracoes.db")).CarregarGravacaoJson(),
@@ -115,7 +131,9 @@ try
     Check(ComparadorInsumos.NormalizarNome("AMORA (Urgente) EXTRA", true) == "AMORA (URGENTE) EXTRA", "Não remover tag intermediária.");
     Check(ComparadorInsumos.NormalizarNome("AMORA (Urgente)") == "AMORA (URGENTE)", "Não remover tag do PDF.");
     Check(ComparadorInsumos.NormalizarNome("B12 (1%)") == "B12 (1%)", "Preservar números e pontuação.");
-    foreach (decimal percentual in new[] { 0m, -1m, 100.1m })
+    Check(ComparadorInsumos.MatchInsumo("A", ["B"], 0m), "Aceitar limite de 0%.");
+    Check(!ComparadorInsumos.MatchInsumo("", ["B"], 0m), "0% preserva rejeição de nomes vazios.");
+    foreach (decimal percentual in new[] { -1m, 100.1m })
     {
         bool rejeitado = false;
         try { ComparadorInsumos.MatchInsumo("A", ["A"], percentual); }

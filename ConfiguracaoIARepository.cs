@@ -69,6 +69,25 @@ public sealed class ConfiguracaoIARepository
         }
     }
 
+    public decimal CarregarPercentualMinimoMatch()
+    {
+        using var banco = new Banco(caminho);
+        using var consulta = banco.Preparar("SELECT valor FROM configuracao_geral WHERE nome = 'percentual_minimo_match';");
+        if (!consulta.Ler()) return ComparadorInsumos.PercentualMinimoMatch;
+        decimal percentual = decimal.Parse(consulta.Texto(0), System.Globalization.CultureInfo.InvariantCulture);
+        ComparadorInsumos.ValidarPercentual(percentual);
+        return percentual;
+    }
+
+    public void SalvarPercentualMinimoMatch(decimal percentual)
+    {
+        ComparadorInsumos.ValidarPercentual(percentual);
+        using var banco = new Banco(caminho);
+        using var comando = banco.Preparar("INSERT INTO configuracao_geral (nome, valor) VALUES ('percentual_minimo_match', ?1) ON CONFLICT(nome) DO UPDATE SET valor = excluded.valor;");
+        comando.Vincular(1, percentual.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        comando.Ler();
+    }
+
     public bool CarregarGravacaoJson()
     {
         using var banco = new Banco(caminho);
