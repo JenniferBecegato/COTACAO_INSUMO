@@ -735,6 +735,34 @@ namespace COTACAO_INSUMO
             };
         }
 
+        private void EstilizarCard(Panel card)
+        {
+            card.BorderStyle = BorderStyle.None;
+            card.BackColor = Color.FromArgb(23, 28, 35);
+            card.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 3,
+                BackColor = Color.FromArgb(47, 91, 145) });
+        }
+
+        private void EstilizarGrade(DataGridView grade)
+        {
+            grade.BorderStyle = BorderStyle.None;
+            grade.BackgroundColor = Color.FromArgb(20, 24, 30);
+            grade.GridColor = Color.FromArgb(43, 52, 65);
+            grade.ColumnHeadersHeight = 40;
+            grade.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(32, 44, 60);
+            grade.DefaultCellStyle.BackColor = Color.FromArgb(23, 28, 35);
+            grade.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(28, 34, 42);
+            grade.DefaultCellStyle.Padding = new Padding(8, 4, 8, 4);
+            grade.RowTemplate.Height = 38;
+            foreach (DataGridViewColumn coluna in grade.Columns)
+                if (coluna is DataGridViewButtonColumn botao)
+                {
+                    botao.FlatStyle = FlatStyle.Flat;
+                    botao.DefaultCellStyle.BackColor = Color.FromArgb(35, 59, 87);
+                    botao.DefaultCellStyle.ForeColor = Color.FromArgb(204, 224, 250);
+                }
+        }
+
         private Label CriarTitulo(string texto)
         {
             return new Label
@@ -1166,24 +1194,46 @@ namespace COTACAO_INSUMO
             AjustarContainerATela(tela);
             iniciar.Size = new Size(160, 44);
             consultar.Size = new Size(160, 44);
+            EstilizarCard(cardNova);
+            EstilizarCard(cardConsulta);
+            iniciar.Text = "Criar nova cotação";
+            iniciar.BackColor = corAzul;
+            iniciar.FlatAppearance.BorderSize = 0;
+            iniciar.Width = 210;
+            consultar.Width = 210;
+            consultar.Text = "Ver minhas cotações";
+            descNova.Text = "Selecione os PDFs e preencha sua planilha.";
+            descConsulta.Text = "Acesse suas cotações organizadas por período.";
+            acesso.Text = "ACESSO RÁPIDO";
+            acesso.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            orlando.Text = "Cotações Orlando";
+            drugstore.Text = "Cotações Drugstore";
+            naoEncontrados.Text = "Insumos não encontrados";
+            naoEncontrados.ForeColor = Color.FromArgb(245, 190, 85);
+            Label boasVindas = CriarTexto("Organize cotações, compare fornecedores e acompanhe seus insumos.");
+            boasVindas.Location = new Point(10, 45);
+            tela.Controls.Add(boasVindas);
             void AjustarLayoutInicio()
             {
-                int larguraCard = Math.Max(280, (tela.ClientSize.Width - 40) / 2);
-                int alturaCard = Math.Clamp(tela.ClientSize.Height / 4, 170, 210);
-                cardNova.Size = new Size(larguraCard, alturaCard);
-                cardConsulta.Size = cardNova.Size;
-                cardConsulta.Left = cardNova.Right + 20;
-                tituloNova.Location = new Point((cardNova.ClientSize.Width - tituloNova.PreferredSize.Width) / 2, 30);
-                descNova.Location = new Point((cardNova.ClientSize.Width - descNova.PreferredSize.Width) / 2, 68);
-                iniciar.Location = new Point((cardNova.ClientSize.Width - iniciar.Width) / 2, alturaCard - 64);
-                tituloConsulta.Location = new Point((cardConsulta.ClientSize.Width - tituloConsulta.PreferredSize.Width) / 2, 30);
-                descConsulta.Location = new Point((cardConsulta.ClientSize.Width - descConsulta.PreferredSize.Width) / 2, 68);
-                consultar.Location = new Point((cardConsulta.ClientSize.Width - consultar.Width) / 2, alturaCard - 64);
-                acesso.Top = cardNova.Bottom + 30;
-                orlando.Bounds = new Rectangle(10, acesso.Bottom + 15, larguraCard, 48);
-                drugstore.Bounds = new Rectangle(cardConsulta.Left, orlando.Top, larguraCard, 48);
-                naoEncontrados.Bounds = new Rectangle(10, orlando.Bottom + 20,
-                    Math.Max(280, larguraCard), 48);
+                bool compacto = tela.ClientSize.Width < 820;
+                int larguraCard = Math.Max(300, (tela.ClientSize.Width - (compacto ? 20 : 38)) / (compacto ? 1 : 2));
+                cardNova.SetBounds(10, 96, larguraCard, 220);
+                cardConsulta.SetBounds(compacto ? 10 : cardNova.Right + 18,
+                    compacto ? cardNova.Bottom + 18 : cardNova.Top, larguraCard, 220);
+                tituloNova.Location = new Point(24, 28);
+                descNova.Location = new Point(24, 70);
+                iniciar.Location = new Point(24, 145);
+                tituloConsulta.Location = new Point(24, 28);
+                descConsulta.Location = new Point(24, 70);
+                consultar.Location = new Point(24, 145);
+                descNova.MaximumSize = new Size(larguraCard - 48, 0);
+                descConsulta.MaximumSize = new Size(larguraCard - 48, 0);
+                acesso.Top = cardConsulta.Bottom + 32;
+                orlando.Bounds = new Rectangle(10, acesso.Bottom + 16, larguraCard, 50);
+                drugstore.Bounds = new Rectangle(compacto ? 10 : cardConsulta.Left,
+                    compacto ? orlando.Bottom + 12 : orlando.Top, larguraCard, 50);
+                naoEncontrados.Bounds = new Rectangle(10, drugstore.Bottom + 14, larguraCard, 50);
+                tela.AutoScroll = true;
             }
             tela.Resize += (s, e) => AjustarLayoutInicio();
             AjustarLayoutInicio();
@@ -1926,8 +1976,6 @@ namespace COTACAO_INSUMO
                     }
                     string mensagem = $"{salvos} de {arquivos.Length} PDF(s) extraído(s) e " +
                         $"{camposSalvos} JSON(s) _campos salvo(s) em:\n{pasta}";
-                    mensagem += $"\n\nOcorrências não encontradas gravadas/atualizadas no banco: {registrosPersistidos}.";
-                    mensagem += $"\nPreços preenchidos: {precosPreenchidos}. Fornecedores criados: {fornecedoresCriados}.";
                     if (pendenciasPreenchimento.Count > 0)
                         mensagem += "\n\nPendências de preenchimento:\n" + string.Join("\n", pendenciasPreenchimento);
                     if (falhasPreenchimento.Count > 0)
@@ -1962,30 +2010,55 @@ namespace COTACAO_INSUMO
 
                 if (resumoConclusao != null)
                     AbrirTelaConcluido(lojaProcessamento, mesProcessamento, anoProcessamento,
-                        caminhoComparacao, resumoConclusao,
+                        caminhoComparacao, resumoConclusao, precosPreenchidos, registrosPersistidos,
                         falhas.Count > 0 || falhasPersistencia.Count > 0 || pendentes > 0 ||
                         falhasPreenchimento.Count > 0 || pendenciasPreenchimento.Count > 0);
             };
 
             AjustarContainerATela(tela);
+            EstilizarCard(cardLoja);
+            EstilizarCard(cardExcel);
+            EstilizarCard(cardPdfs);
+            EstilizarGrade(dgvPdfs);
+            lblLoja.Font = lblMesAno.Font = lblExcel.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            selecionarPdfs.Text = "Adicionar PDFs";
+            selecionarPdfs.BackColor = Color.FromArgb(35, 59, 87);
+            processar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            painelExcel.BackColor = Color.FromArgb(30, 38, 48);
+            painelExcel.BorderStyle = BorderStyle.None;
+            iconeExcel.Text = "X";
+            Label ajudaNova = CriarTexto("Escolha a empresa, o período e os arquivos dos fornecedores para começar.");
+            ajudaNova.Location = new Point(10, 43);
+            tela.Controls.Add(ajudaNova);
+            tela.AutoScroll = false;
+            tela.AutoScrollMinSize = Size.Empty;
+            tela.AutoScrollMargin = Size.Empty;
             void AjustarLayoutNovaCotacao()
             {
                 int largura = Math.Max(1, tela.ClientSize.Width - 20);
-                cardLoja.Width = Math.Max(410, (largura - 10) / 2);
-                cardExcel.Left = cardLoja.Right + 10;
-                cardExcel.Width = Math.Max(460, largura - cardLoja.Width - 10);
+                bool compacto = largura < 940;
+                cardLoja.Location = new Point(10, 84);
+                cardLoja.Width = compacto ? largura : (largura - 18) / 2;
+                cardExcel.Left = compacto ? 10 : cardLoja.Right + 18;
+                cardExcel.Width = compacto ? largura : largura - cardLoja.Width - 18;
                 lblAviso.Width = Math.Max(1, cardLoja.ClientSize.Width - 20);
                 lblAviso.Height = lblAviso.GetPreferredSize(new Size(lblAviso.Width, 0)).Height;
                 cardLoja.Height = Math.Max(220, lblAviso.Bottom + 15);
+                cardExcel.Top = compacto ? cardLoja.Bottom + 18 : cardLoja.Top;
                 cardExcel.Height = cardLoja.Height;
+                painelExcel.Width = cardExcel.Width - 30;
+                selecionarExcel.Left = painelExcel.Width - selecionarExcel.Width - 12;
+                removerExcel.Left = selecionarExcel.Left - removerExcel.Width - 8;
+                arquivoExcel.Width = Math.Max(80, removerExcel.Left - arquivoExcel.Left - 8);
                 cardPdfs.Top = Math.Max(cardLoja.Bottom, cardExcel.Bottom) + 15;
                 cardPdfs.Width = largura;
-                cardPdfs.Height = Math.Max(160, tela.ClientSize.Height - cardPdfs.Top - 76);
+                int topoProcessar = Math.Max(0, tela.ClientSize.Height - processar.Height - 12);
+                cardPdfs.Height = Math.Max(0, topoProcessar - cardPdfs.Top - 16);
                 dgvPdfs.Width = Math.Max(1, cardPdfs.ClientSize.Width - 20);
-                dgvPdfs.Height = Math.Max(45, cardPdfs.ClientSize.Height - 130);
-                selecionarPdfs.Top = dgvPdfs.Bottom + 15;
+                selecionarPdfs.Top = Math.Max(0, cardPdfs.ClientSize.Height - selecionarPdfs.Height - 16);
+                dgvPdfs.Height = Math.Max(0, selecionarPdfs.Top - dgvPdfs.Top - 14);
                 processar.Location = new Point(Math.Max(10, cardPdfs.Right - processar.Width),
-                    cardPdfs.Bottom + 20);
+                    topoProcessar);
             }
             tela.Resize += (s, e) => AjustarLayoutNovaCotacao();
             lblAviso.TextChanged += (s, e) => AjustarLayoutNovaCotacao();
@@ -2004,7 +2077,7 @@ namespace COTACAO_INSUMO
         // =========================================================
 
         private void AbrirTelaConcluido(string empresa, int mes, int ano, string caminhoPlanilha,
-            string resumo, bool comPendencias)
+            string resumo, int insumosPreenchidos, int insumosNaoEncontrados, bool comPendencias)
         {
             telaAtual = TelaAtual.Concluido;
             LimparConteudo();
@@ -2027,21 +2100,67 @@ namespace COTACAO_INSUMO
                 : "A leitura, a comparação e a gravação foram concluídas com sucesso.");
             subtitulo.Location = new Point(65, 53);
 
-            Panel informacoes = CriarCard(850, 240);
-            informacoes.Location = new Point(10, 105);
-            informacoes.AutoScroll = true;
+            Color verde = Color.FromArgb(75, 210, 145);
+            Color amarelo = Color.FromArgb(245, 190, 85);
+            icone.BackColor = comPendencias ? Color.FromArgb(54, 43, 25) : Color.FromArgb(23, 49, 37);
+            icone.ForeColor = comPendencias ? amarelo : verde;
+            icone.Size = new Size(46, 46);
+            icone.Location = new Point(10, 16);
+            titulo.Location = new Point(72, 12);
+            subtitulo.Location = new Point(72, 52);
+
+            Panel CriarIndicador(string nome, string texto, int quantidade, Color destaque)
+            {
+                Panel card = CriarCard(400, 132);
+                card.Name = nome;
+                card.BorderStyle = BorderStyle.None;
+                card.BackColor = Color.FromArgb(24, 29, 36);
+                Panel faixa = new() { Dock = DockStyle.Left, Width = 4, BackColor = destaque };
+                Label legenda = CriarTexto(texto);
+                legenda.Location = new Point(22, 18);
+                legenda.Font = new Font("Segoe UI", 10F);
+                legenda.ForeColor = Color.FromArgb(186, 196, 208);
+                Label valor = new()
+                {
+                    Text = quantidade.ToString("N0"), AutoSize = true,
+                    Location = new Point(18, 45), ForeColor = destaque,
+                    Font = new Font("Segoe UI", 30F, FontStyle.Bold)
+                };
+                card.Controls.AddRange([faixa, legenda, valor]);
+                return card;
+            }
+            Panel preenchidos = CriarIndicador("cardInsumosPreenchidos",
+                "Insumos preenchidos na planilha", insumosPreenchidos, verde);
+            Panel naoEncontrados = CriarIndicador("cardInsumosNaoEncontrados",
+                "Insumos não encontrados", insumosNaoEncontrados, amarelo);
+
+            Panel informacoes = CriarCard(850, 180);
+            informacoes.BorderStyle = BorderStyle.None;
+            informacoes.BackColor = Color.FromArgb(23, 26, 31);
+            Label cabecalhoResumo = CriarLabelSecao("RESUMO DO PROCESSAMENTO");
+            cabecalhoResumo.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            cabecalhoResumo.ForeColor = Color.FromArgb(151, 166, 185);
+            cabecalhoResumo.Location = new Point(22, 18);
+            Label periodo = CriarTexto($"{empresa}  •  {ObterNomeMes(mes)} de {ano}");
+            periodo.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+            periodo.ForeColor = Color.WhiteSmoke;
+            periodo.Location = new Point(22, 46);
+            Panel conteudoResumo = new() { Location = new Point(22, 83), AutoScroll = true };
             Label detalhes = new()
             {
-                Text = $"{empresa} > {ano}-{mes:00}\n\n" + resumo,
+                Text = resumo,
                 AutoSize = true,
                 MaximumSize = new Size(780, 0),
-                ForeColor = Color.WhiteSmoke,
-                Location = new Point(22, 20)
+                ForeColor = Color.FromArgb(186, 196, 208),
+                Font = new Font("Segoe UI", 10F),
+                Location = Point.Empty
             };
-            informacoes.Controls.Add(detalhes);
+            conteudoResumo.Controls.Add(detalhes);
+            informacoes.Controls.AddRange([cabecalhoResumo, periodo, conteudoResumo]);
 
-            Button visualizarPlanilha = CriarBotao("Visualizar planilha de cotação", 285, 44);
-            visualizarPlanilha.Location = new Point(10, 375);
+            Button visualizarPlanilha = CriarBotaoAzul("Visualizar planilha de cotação", 285, 46);
+            visualizarPlanilha.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            visualizarPlanilha.Location = new Point(10, 470);
             visualizarPlanilha.Click += (s, e) =>
             {
                 if (!File.Exists(caminhoPlanilha))
@@ -2054,8 +2173,9 @@ namespace COTACAO_INSUMO
                 anoFiltroConsulta = ano;
                 AbrirTabelaCotacaoArquivo(caminhoPlanilha, empresa, mes, ano);
             };
-            Button verNaoEncontrados = CriarBotao("Visualizar não localizados", 265, 44);
-            verNaoEncontrados.Location = new Point(310, 375);
+            Button verNaoEncontrados = CriarBotao("Visualizar não encontrados", 265, 46);
+            verNaoEncontrados.Font = new Font("Segoe UI", 10F);
+            verNaoEncontrados.Location = new Point(310, 470);
             verNaoEncontrados.Click += (s, e) =>
             {
                 lojaConsultaSelecionada = empresa;
@@ -2064,7 +2184,28 @@ namespace COTACAO_INSUMO
                 anoSelecionado = ano;
                 AbrirTelaNaoEncontrados();
             };
-            tela.Controls.AddRange([icone, titulo, subtitulo, informacoes, visualizarPlanilha, verNaoEncontrados]);
+            tela.Controls.AddRange([icone, titulo, subtitulo, preenchidos, naoEncontrados, informacoes, visualizarPlanilha, verNaoEncontrados]);
+            AjustarContainerATela(tela);
+            void AjustarResumo()
+            {
+                int largura = Math.Max(300, tela.ClientSize.Width - 20);
+                bool compacto = largura < 680;
+                int larguraCard = compacto ? largura : (largura - 18) / 2;
+                preenchidos.SetBounds(10, 108, larguraCard, 132);
+                naoEncontrados.SetBounds(compacto ? 10 : preenchidos.Right + 18,
+                    compacto ? preenchidos.Bottom + 14 : preenchidos.Top, larguraCard, 132);
+                informacoes.SetBounds(10, naoEncontrados.Bottom + 22, largura, 180);
+                conteudoResumo.Size = new Size(Math.Max(1, largura - 44), 77);
+                detalhes.MaximumSize = new Size(Math.Max(200, conteudoResumo.Width -
+                    SystemInformation.VerticalScrollBarWidth), 0);
+                visualizarPlanilha.Location = new Point(10, informacoes.Bottom + 22);
+                verNaoEncontrados.Location = new Point(compacto ? 10 : visualizarPlanilha.Right + 14,
+                    compacto ? visualizarPlanilha.Bottom + 12 : visualizarPlanilha.Top);
+                tela.AutoScroll = true;
+                tela.AutoScrollMinSize = new Size(0, verNaoEncontrados.Bottom + 20);
+            }
+            tela.Resize += (s, e) => AjustarResumo();
+            AjustarResumo();
             painelConteudo.Controls.Add(tela);
         }
 
@@ -2434,19 +2575,48 @@ namespace COTACAO_INSUMO
                 }
             };
             AjustarContainerATela(tela);
+            EstilizarGrade(dgv);
+            dgv.Columns["Arquivo"]!.FillWeight = 190;
+            dgv.Columns["Mes"]!.FillWeight = 75;
+            dgv.Columns["Ano"]!.FillWeight = 45;
+            Panel filtros = CriarCard(900, 110);
+            EstilizarCard(filtros);
+            Label empresaFiltro = CriarLabelSecao("Empresa");
+            empresaFiltro.Location = new Point(18, 15);
+            Label subtituloConsulta = CriarTexto("Consulte as planilhas por empresa e período, abra os detalhes ou exporte em PDF.");
+            subtituloConsulta.Location = new Point(10, 45);
+            orlando.Location = new Point(18, 45);
+            drugstore.Location = new Point(160, 45);
+            lblAno.Location = new Point(320, 15);
+            campoAno.Location = new Point(320, 48);
+            buscar.Location = new Point(450, 45);
+            buscar.Size = new Size(130, 40);
+            buscar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            exportar.Size = new Size(148, 40);
+            exportar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            excluir.ForeColor = Color.FromArgb(246, 143, 143);
+            excluir.BackColor = Color.FromArgb(43, 27, 32);
+            excluir.FlatAppearance.BorderColor = Color.FromArgb(105, 52, 58);
+            Label resultados = CriarLabelSecao("COTAÇÕES DO PERÍODO");
+            resultados.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            resultados.ForeColor = Color.FromArgb(158, 173, 192);
             void AjustarLayoutConsulta()
             {
-                exportar.Location = new Point(Math.Max(300, tela.ClientSize.Width - exportar.Width - 80), 40);
-                dgv.Width = Math.Max(1, tela.ClientSize.Width - 20);
-                dgv.Height = Math.Max(80, tela.ClientSize.Height - dgv.Top - 100);
-                excluir.Location = new Point(dgv.Right - excluir.Width, dgv.Bottom + 15);
-                selecionarTudo.Location = new Point(excluir.Left - selecionarTudo.Width - 15, excluir.Top);
-                vazio.Top = selecionarTudo.Bottom + 12;
+                int largura = Math.Max(600, tela.ClientSize.Width - 20);
+                filtros.SetBounds(10, 88, largura, 108);
+                resultados.Location = new Point(10, filtros.Bottom + 26);
+                exportar.Location = new Point(filtros.Right - exportar.Width, filtros.Bottom + 14);
+                dgv.SetBounds(10, exportar.Bottom + 16, largura,
+                    Math.Max(80, tela.ClientSize.Height - exportar.Bottom - 94));
+                excluir.Location = new Point(dgv.Right - excluir.Width, dgv.Bottom + 16);
+                selecionarTudo.Location = new Point(excluir.Left - selecionarTudo.Width - 12, excluir.Top);
+                vazio.Location = new Point(10, excluir.Top + 10);
             }
             tela.Resize += (s, e) => AjustarLayoutConsulta();
             AjustarLayoutConsulta();
-            tela.Controls.AddRange(new Control[] { titulo, orlando, drugstore,
-                lblAno, campoAno, buscar, exportar, dgv, selecionarTudo, excluir, vazio });
+            tela.Controls.AddRange([titulo, subtituloConsulta, filtros, resultados,
+                exportar, dgv, selecionarTudo, excluir, vazio]);
+            filtros.Controls.AddRange([empresaFiltro, orlando, drugstore, lblAno, campoAno, buscar]);
             painelConteudo.Controls.Add(tela);
             CarregarResultados();
         }
@@ -2625,114 +2795,153 @@ namespace COTACAO_INSUMO
             // GRID
             // =========================================================
 
-            DataGridView dgv =
-                CriarGrid();
-
-            dgv.Location =
-                new Point(10, 190);
-
-            dgv.Width =
-                870;
-
-            dgv.Height =
-                430;
-
-            dgv.AllowUserToAddRows =
-                false;
-
-            dgv.AllowUserToDeleteRows =
-                false;
-
-            dgv.ReadOnly =
-                false;
-
-            dgv.SelectionMode =
-                DataGridViewSelectionMode.FullRowSelect;
-
-            dgv.MultiSelect =
-                true;
-
-            dgv.ScrollBars =
-                ScrollBars.Vertical;
-
-            dgv.AutoSizeColumnsMode =
-                DataGridViewAutoSizeColumnsMode.None;
-
-            // =========================================================
-            // COLUNAS
-            // =========================================================
-
-            dgv.Columns.Add(
-                "Fornecedor",
-                "Fornecedor"
-            );
-
-            dgv.Columns["Fornecedor"].Width =
-                170;
-
-            dgv.Columns.Add(
-                "Insumo",
-                "Insumo"
-            );
-
-            dgv.Columns["Insumo"].Width =
-                300;
-
-            dgv.Columns.Add(
-                "Preco",
-                "Preço normalizado"
-            );
-
-            dgv.Columns["Preco"].Width =
-                150;
-
-            dgv.Columns.Add(
-                "Tipo",
-                "Tipo"
-            );
-
-            dgv.Columns["Tipo"].Width =
-                110;
-
-            dgv.Columns.Add(
-                "Data",
-                "Data"
-            );
-
-            dgv.Columns["Data"].Width =
-                90;
-
-            DataGridViewCheckBoxColumn colunaSelecionar =
-                new DataGridViewCheckBoxColumn
-                {
-                    Name =
-                        "Selecionar",
-
-                    HeaderText =
-                        "",
-
-                    Width =
-                        38,
-
-                    MinimumWidth =
-                        38,
-
-                    AutoSizeMode =
-                        DataGridViewAutoSizeColumnMode.None
-                };
-
-            dgv.Columns.Add(
-                colunaSelecionar
-            );
-
-            // Somente checkbox editável
-            foreach (
-                DataGridViewColumn coluna
-                in dgv.Columns
-            )
+            Panel fornecedores = new Panel
             {
-                coluna.ReadOnly =
-                    coluna.Name != "Selecionar";
+                Location = new Point(10, 190), Width = 870, Height = 430,
+                AutoScroll = true
+            };
+            Label quantidade = CriarLabelSecao("Fornecedores");
+            quantidade.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+            quantidade.Location = new Point(10, 222);
+            Label orientacao = CriarTexto("Abra os fornecedores que deseja incluir no PDF.");
+            orientacao.Location = new Point(10, 252);
+            orientacao.ForeColor = Color.FromArgb(158, 173, 192);
+            var grupos = new List<(Panel Painel, Button Cabecalho, DataGridView Grid,
+                List<ItemNaoEncontradoSalvo> Itens)>();
+            string empresaCarregada = "";
+            int mesCarregado = 0, anoCarregado = 0;
+
+            void OrganizarFornecedores()
+            {
+                int y = fornecedores.AutoScrollPosition.Y;
+                foreach (var grupo in grupos)
+                {
+                    grupo.Painel.SetBounds(0, y, Math.Max(1, fornecedores.ClientSize.Width -
+                        SystemInformation.VerticalScrollBarWidth - 2),
+                        grupo.Grid.Visible ? grupo.Grid.Height + 58 : 58);
+                    y += grupo.Painel.Height + 12;
+                }
+            }
+            fornecedores.Resize += (s, e) => OrganizarFornecedores();
+
+            DataGridView CriarGridFornecedor()
+            {
+                DataGridView dgv =
+                    CriarGrid();
+
+                dgv.Dock = DockStyle.Fill;
+
+                dgv.Width =
+                    870;
+
+                dgv.Height =
+                    430;
+
+                dgv.AllowUserToAddRows =
+                    false;
+
+                dgv.AllowUserToDeleteRows =
+                    false;
+
+                dgv.ReadOnly =
+                    false;
+
+                dgv.SelectionMode =
+                    DataGridViewSelectionMode.FullRowSelect;
+
+                dgv.MultiSelect =
+                    true;
+
+                dgv.ScrollBars =
+                    ScrollBars.Vertical;
+
+                dgv.AutoSizeColumnsMode =
+                    DataGridViewAutoSizeColumnsMode.None;
+
+                // =========================================================
+                // COLUNAS
+                // =========================================================
+
+                dgv.Columns.Add(
+                    "Fornecedor",
+                    "Fornecedor"
+                );
+
+                dgv.Columns["Fornecedor"]!.Width =
+                    170;
+
+                dgv.Columns.Add(
+                    "Insumo",
+                    "Insumo"
+                );
+
+                dgv.Columns["Insumo"]!.Width =
+                    300;
+
+                dgv.Columns.Add(
+                    "Preco",
+                    "Preço normalizado"
+                );
+
+                dgv.Columns["Preco"]!.Width =
+                    150;
+
+                dgv.Columns.Add(
+                    "Tipo",
+                    "Tipo"
+                );
+
+                dgv.Columns["Tipo"]!.Width =
+                    110;
+
+                dgv.Columns.Add(
+                    "Data",
+                    "Data"
+                );
+
+                dgv.Columns["Data"]!.Width =
+                    90;
+
+                DataGridViewCheckBoxColumn colunaSelecionar =
+                    new DataGridViewCheckBoxColumn
+                    {
+                        Name =
+                            "Selecionar",
+
+                        HeaderText =
+                            "",
+
+                        Width =
+                            38,
+
+                        MinimumWidth =
+                            38,
+
+                        AutoSizeMode =
+                            DataGridViewAutoSizeColumnMode.None
+                    };
+
+                dgv.Columns.Add(
+                    colunaSelecionar
+                );
+
+                // Somente checkbox editável
+                foreach (
+                    DataGridViewColumn coluna
+                    in dgv.Columns
+                )
+                {
+                    coluna.ReadOnly =
+                        coluna.Name != "Selecionar";
+                }
+
+                dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+                dgv.Columns["Insumo"]!.FillWeight = 180;
+                dgv.Columns["Fornecedor"]!.FillWeight = 110;
+                dgv.Columns["Preco"]!.FillWeight = 95;
+                dgv.Columns["Tipo"]!.FillWeight = 70;
+                dgv.Columns["Data"]!.FillWeight = 65;
+            return dgv;
             }
 
             Button btnSelecionarTudo =
@@ -2756,7 +2965,7 @@ namespace COTACAO_INSUMO
 
                     foreach (
                         DataGridViewRow linha
-                        in dgv.Rows
+                        in grupos.SelectMany(g => g.Grid.Rows.Cast<DataGridViewRow>())
                     )
                     {
                         linha
@@ -2791,7 +3000,14 @@ namespace COTACAO_INSUMO
 
             void CarregarItens()
             {
-                dgv.Rows.Clear();
+                var abertos = grupos.Where(g => g.Grid.Visible)
+                    .Select(g => g.Itens[0].Fornecedor).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var grupo in grupos) grupo.Painel.Dispose();
+                grupos.Clear();
+                fornecedores.Controls.Clear();
+                fornecedores.AutoScrollPosition = Point.Empty;
+                todosSelecionados = false;
+                btnSelecionarTudo.Text = "Selecionar tudo";
 
                 string empresa =
                     cmbEmpresa.SelectedItem?
@@ -2809,13 +3025,75 @@ namespace COTACAO_INSUMO
 
                 try
                 {
-                    foreach (var item in naoEncontradosRepository.Consultar(empresa, mes, ano))
+                    var itens = naoEncontradosRepository.Consultar(empresa, mes, ano);
+                    empresaCarregada = empresa;
+                    mesCarregado = mes;
+                    anoCarregado = ano;
+                    foreach (var fornecedor in itens
+                        .GroupBy(i => i.Fornecedor, StringComparer.CurrentCultureIgnoreCase)
+                        .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase))
                     {
-                        int indice = dgv.Rows.Add(item.Fornecedor, item.Insumo,
-                            item.PrecoNormalizado > 0 ? item.PrecoNormalizado.ToString("0.############################") : "Conferir PDF",
-                            item.TipoPreco == "NAO_IDENTIFICADO" || string.IsNullOrWhiteSpace(item.TipoPreco) ? "Conferir unidade" : item.TipoPreco, item.DataRegistro.ToString("dd/MM"), false);
-                        dgv.Rows[indice].Tag = item.Id;
+                        var ordenados = fornecedor.OrderBy(i => i.Insumo,
+                            StringComparer.Create(System.Globalization.CultureInfo.GetCultureInfo("pt-BR"), true))
+                            .ThenBy(i => i.Id).ToList();
+                        var dgv = CriarGridFornecedor();
+                        foreach (var item in ordenados)
+                        {
+                            int indice = dgv.Rows.Add(item.Fornecedor, item.Insumo,
+                                item.PrecoNormalizado > 0 ? item.PrecoNormalizado.ToString("0.############################") : "Conferir PDF",
+                                item.TipoPreco == "NAO_IDENTIFICADO" || string.IsNullOrWhiteSpace(item.TipoPreco) ? "Conferir unidade" : item.TipoPreco,
+                                item.DataRegistro.ToString("dd/MM"), false);
+                            dgv.Rows[indice].Tag = item.Id;
+                        }
+                        // Keep the initial alphabetical order when displaying each supplier.
+                        foreach (DataGridViewColumn coluna in dgv.Columns)
+                            coluna.SortMode = DataGridViewColumnSortMode.NotSortable;
+                        dgv.Dock = DockStyle.None;
+                        dgv.Location = new Point(0, 58);
+                        dgv.Height = Math.Min(430, dgv.ColumnHeadersHeight + dgv.Rows.Count * dgv.RowTemplate.Height + 4);
+                        dgv.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                        var painel = new Panel();
+                        var cabecalho = CriarBotao("", 870, 54);
+                        cabecalho.Dock = DockStyle.Top;
+                        cabecalho.TextAlign = ContentAlignment.MiddleLeft;
+                        cabecalho.Padding = new Padding(16, 0, 12, 0);
+                        cabecalho.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+                        cabecalho.BackColor = Color.FromArgb(26, 32, 41);
+                        cabecalho.FlatAppearance.BorderColor = Color.FromArgb(48, 61, 78);
+                        cabecalho.FlatAppearance.MouseOverBackColor = Color.FromArgb(34, 46, 62);
+                        dgv.BackgroundColor = Color.FromArgb(20, 24, 30);
+                        dgv.BorderStyle = BorderStyle.None;
+                        dgv.EnableHeadersVisualStyles = false;
+                        dgv.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(32, 44, 60);
+                        dgv.ColumnHeadersDefaultCellStyle.ForeColor = Color.WhiteSmoke;
+                        dgv.ColumnHeadersHeight = 36;
+                        dgv.DefaultCellStyle.Padding = new Padding(6, 3, 6, 3);
+                        dgv.RowTemplate.Height = 32;
+                        foreach (DataGridViewRow linha in dgv.Rows) linha.Height = 32;
+                        dgv.Height = Math.Min(430, 40 + dgv.Rows.Count * 32);
+                        dgv.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(26, 30, 37);
+                        bool aberto = abertos.Contains(fornecedor.Key);
+                        void AtualizarCabecalho() => cabecalho.Text =
+                            $"{(dgv.Visible ? "▼" : "▶")}  {fornecedor.Key}   •   {ordenados.Count} insumos";
+                        painel.Controls.Add(dgv);
+                        painel.Controls.Add(cabecalho);
+                        fornecedores.Controls.Add(painel);
+                        grupos.Add((painel, cabecalho, dgv, ordenados));
+                        painel.Resize += (s, e) => dgv.Width = painel.ClientSize.Width;
+                        dgv.Visible = aberto;
+                        AtualizarCabecalho();
+                        cabecalho.Click += (s, e) =>
+                        {
+                            dgv.Visible = !dgv.Visible;
+                            AtualizarCabecalho();
+                            OrganizarFornecedores();
+                        };
                     }
+                    quantidade.Text = $"Fornecedores ({grupos.Count})  •  {itens.Count} insumos";
+                    orientacao.Text = itens.Count == 0
+                        ? "Nenhum insumo não encontrado neste período."
+                        : "Abra os fornecedores que deseja incluir no PDF.";
+                    OrganizarFornecedores();
                 }
                 catch (Exception ex)
                 {
@@ -2840,8 +3118,8 @@ namespace COTACAO_INSUMO
             btnExcluir.Click +=
                 (s, e) =>
                 {
-                    dgv.EndEdit();
-                    var itensParaExcluir = dgv.Rows.Cast<DataGridViewRow>()
+                    foreach (var grupo in grupos) grupo.Grid.EndEdit();
+                    var itensParaExcluir = grupos.SelectMany(g => g.Grid.Rows.Cast<DataGridViewRow>())
                         .Where(linha => Convert.ToBoolean(linha.Cells["Selecionar"].Value ?? false))
                         .Select(linha => (long)linha.Tag!).ToList();
                     if (itensParaExcluir.Count == 0)
@@ -2874,8 +3152,8 @@ namespace COTACAO_INSUMO
 
                     try
                     {
-                        string empresaExcluida = cmbEmpresa.Text;
-                        int mesExcluido = cmbMes.SelectedIndex + 1, anoExcluido = (int)numAno.Value;
+                        string empresaExcluida = empresaCarregada;
+                        int mesExcluido = mesCarregado, anoExcluido = anoCarregado;
                         var removidos = naoEncontradosRepository.Consultar(empresaExcluida, mesExcluido, anoExcluido)
                             .Where(i => itensParaExcluir.Contains(i.Id)).ToList();
                         naoEncontradosRepository.Excluir(itensParaExcluir);
@@ -2923,37 +3201,79 @@ namespace COTACAO_INSUMO
             // =========================================================
 
             AjustarContainerATela(tela);
-            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            dgv.Columns["Insumo"]!.FillWeight = 180;
-            dgv.Columns["Fornecedor"]!.FillWeight = 110;
-            dgv.Columns["Preco"]!.FillWeight = 95;
-            dgv.Columns["Tipo"]!.FillWeight = 70;
-            dgv.Columns["Data"]!.FillWeight = 65;
             Button exportar = CriarBotao("Exportar PDF", 140, 36);
             exportar.BackColor = corAzul;
             exportar.Click += (s, e) =>
             {
-                string empresa = cmbEmpresa.Text;
-                int mes = cmbMes.SelectedIndex + 1, ano = (int)numAno.Value;
+                if (!grupos.Any(g => g.Grid.Visible))
+                {
+                    MessageBox.Show("Abra pelo menos um fornecedor para exportar sua tabela.", "Exportar PDF");
+                    return;
+                }
+                string empresa = empresaCarregada;
+                int mes = mesCarregado, ano = anoCarregado;
                 ExecutarExportacaoPdf("Nao_encontrados", empresa, mes, ano, () =>
                 {
-                    var itens = naoEncontradosRepository.Consultar(empresa, mes, ano);
+                    var itens = grupos.Where(g => g.Grid.Visible).SelectMany(g => g.Itens);
                     return (new[] { "Fornecedor", "Insumo", "Preço normalizado", "Tipo", "Data" },
                         itens.Select(i => new[] { i.Fornecedor, i.Insumo,
                             i.PrecoNormalizado > 0 ? i.PrecoNormalizado.ToString("0.############################") : "Conferir PDF",
                             i.TipoPreco == "NAO_IDENTIFICADO" || string.IsNullOrWhiteSpace(i.TipoPreco) ? "Conferir unidade" : i.TipoPreco, i.DataRegistro.ToString("dd/MM/yyyy") }).ToList());
                 });
             };
-            tela.Controls.Add(exportar);
+            Button abrirPlanilha = CriarBotao("Abrir planilha do período", 220, 38);
+            abrirPlanilha.BackColor = Color.FromArgb(35, 59, 87);
+            abrirPlanilha.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            abrirPlanilha.Click += (s, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(empresaCarregada)) return;
+                lojaConsultaSelecionada = empresaCarregada;
+                mesSelecionado = mesCarregado;
+                anoSelecionado = anoCarregado;
+                anoFiltroConsulta = anoCarregado;
+                AbrirTabelaCotacao(empresaCarregada, mesCarregado, anoCarregado);
+            };
+            tela.Controls.Add(abrirPlanilha);
+            Panel filtros = CriarCard(850, 108);
+            filtros.BorderStyle = BorderStyle.None;
+            filtros.BackColor = Color.FromArgb(23, 28, 35);
+            filtros.Location = new Point(10, 94);
+            tela.Controls.AddRange([filtros, quantidade, orientacao, exportar]);
+            exportar.Size = new Size(148, 40);
+            exportar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            btnSelecionarTudo.Font = new Font("Segoe UI", 9F);
+            btnExcluir.ForeColor = Color.FromArgb(246, 143, 143);
+            btnExcluir.FlatAppearance.BorderColor = Color.FromArgb(105, 52, 58);
+            btnExcluir.BackColor = Color.FromArgb(43, 27, 32);
+            btnBuscar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
             void AjustarLayoutNaoEncontrados()
             {
-                exportar.Location = new Point(Math.Max(300, tela.ClientSize.Width - exportar.Width - 80), 55);
-                dgv.Width = Math.Max(1, tela.ClientSize.Width - 20);
-                dgv.Height = Math.Max(80, tela.ClientSize.Height - dgv.Top - 76);
-                btnExcluir.Location = new Point(Math.Max(10, dgv.Right - btnExcluir.Width),
-                    dgv.Bottom + 20);
+                int largura = Math.Max(340, tela.ClientSize.Width - 20);
+                abrirPlanilha.Location = new Point(Math.Max(10,
+                    tela.ClientSize.Width - abrirPlanilha.Width - 10), 5);
+                filtros.Width = largura;
+                bool compacto = largura < 780;
+                filtros.Height = compacto ? 160 : 108;
+                int coluna = Math.Max(100, (largura - 320) / 3);
+                lblEmpresa.Location = new Point(18, 14);
+                cmbEmpresa.SetBounds(18, 44, coluna, 30);
+                lblMes.Location = new Point(cmbEmpresa.Right + 18, 14);
+                cmbMes.SetBounds(lblMes.Left, 44, coluna, 30);
+                lblAno.Location = new Point(cmbMes.Right + 18, 14);
+                numAno.SetBounds(lblAno.Left, 44, compacto ? 90 : 110, 30);
+                btnBuscar.Location = compacto ? new Point(18, 102) : new Point(numAno.Right + 18, 39);
+                quantidade.Location = new Point(10, filtros.Bottom + 22);
+                orientacao.Location = new Point(10, quantidade.Bottom + 8);
+                exportar.Location = new Point(Math.Max(10, largura - exportar.Width + 10),
+                    compacto ? orientacao.Bottom + 12 : quantidade.Top);
+                int topoLista = Math.Max(orientacao.Bottom, exportar.Bottom) + 18;
+                int acoesY = Math.Max(topoLista + 116,
+                    tela.ClientSize.Height - btnExcluir.Height - 12);
+                btnExcluir.Location = new Point(Math.Max(10, tela.ClientSize.Width - 10 - btnExcluir.Width), acoesY);
                 btnSelecionarTudo.Location = new Point(Math.Max(10,
-                    btnExcluir.Left - btnSelecionarTudo.Width - 15), btnExcluir.Top);
+                    btnExcluir.Left - btnSelecionarTudo.Width - 12), acoesY);
+                fornecedores.SetBounds(10, topoLista, largura,
+                    Math.Max(100, acoesY - topoLista - 16));
             }
             tela.Resize += (s, e) => AjustarLayoutNaoEncontrados();
             AjustarLayoutNaoEncontrados();
@@ -2971,7 +3291,7 @@ namespace COTACAO_INSUMO
 
             tela.Controls.Add(btnBuscar);
 
-            tela.Controls.Add(dgv);
+            tela.Controls.Add(fornecedores);
 
             tela.Controls.Add(
                 btnSelecionarTudo
@@ -2985,6 +3305,8 @@ namespace COTACAO_INSUMO
                 tela
             );
 
+            filtros.Controls.AddRange([lblEmpresa, cmbEmpresa, lblMes, cmbMes, lblAno, numAno, btnBuscar]);
+            AjustarLayoutNaoEncontrados();
             CarregarItens();
         }
 
@@ -5303,15 +5625,15 @@ namespace COTACAO_INSUMO
             // VOLTAR
             // =========================================================
 
-            btnVoltar.Click +=
-                (s, e) =>
+            void SairDaTabela(Action destino)
                 {
+                    dgv.EndEdit();
                     if (temAlteracoes)
                     {
                         DialogResult resposta =
                             MessageBox.Show(
                                 "Existem alterações que ainda não foram salvas.\n\n"
-                                + "Deseja salvar antes de voltar?",
+                                + "Deseja salvar antes de sair da planilha?",
                                 "Alterações não salvas",
                                 MessageBoxButtons.YesNoCancel,
                                 MessageBoxIcon.Question
@@ -5358,8 +5680,38 @@ namespace COTACAO_INSUMO
                     painelConteudo.AutoScroll =
                         true;
 
-                    AbrirTelaConsultar();
-                };
+                    destino();
+                }
+            btnVoltar.Click += (s, e) => SairDaTabela(AbrirTelaConsultar);
+            Button btnNaoLocalizados = CriarBotao("Insumos não encontrados", 210, 38);
+            btnNaoLocalizados.BackColor = Color.FromArgb(35, 59, 87);
+            btnNaoLocalizados.ForeColor = Color.FromArgb(245, 190, 85);
+            topo.Controls.Add(btnNaoLocalizados);
+            btnNaoLocalizados.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            void AjustarAtalhoTabela()
+            {
+                btnNaoLocalizados.Location = new Point(Math.Max(325,
+                    topo.ClientSize.Width - btnNaoLocalizados.Width - 16), 20);
+                int larguraTitulo = Math.Max(1, btnNaoLocalizados.Left - lblTitulo.Left - 16);
+                lblTitulo.AutoSize = false;
+                lblTitulo.AutoEllipsis = true;
+                lblTitulo.Size = new Size(larguraTitulo, 28);
+                lblArquivo.AutoSize = false;
+                lblArquivo.AutoEllipsis = true;
+                lblArquivo.Size = new Size(larguraTitulo, 20);
+                lblAlteracoes.Location = new Point(325, 65);
+            }
+            topo.Resize += (s, e) => AjustarAtalhoTabela();
+            estrutura.RowStyles[0].Height = 100F;
+            AjustarAtalhoTabela();
+            btnNaoLocalizados.Click += (s, e) => SairDaTabela(() =>
+            {
+                lojaConsultaSelecionada = empresa;
+                mesSelecionado = mes;
+                anoSelecionado = ano;
+                anoFiltroConsulta = ano;
+                AbrirTelaNaoEncontrados();
+            });
         }
 
         private void AdicionarCorMenu(ToolStripMenuItem menuPai,DataGridView dgv,string nome,Color cor,Action aoAlterar)
