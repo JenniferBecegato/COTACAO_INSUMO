@@ -2,7 +2,7 @@ namespace COTACAO_INSUMO;
 
 public sealed class ModalErroIA : Form
 {
-    public ModalErroIA(Exception erro, string provedor, string modelo, bool arquivosPreservados = false)
+    public ModalErroIA(Exception erro, string provedor, string modelo, bool arquivosPreservados = false, string? arquivo = null)
     {
         var mensagem = MensagemErroIA.Classificar(erro);
         Text = "Erro na comunicação com a IA";
@@ -46,6 +46,8 @@ public sealed class ModalErroIA : Form
         }
 
         Texto("⚠  " + mensagem.Titulo, true, Color.FromArgb(255, 183, 90));
+        string contextoArquivo = string.IsNullOrWhiteSpace(arquivo) ? "" : $"Arquivo: {Path.GetFileName(arquivo)}";
+        if (contextoArquivo.Length > 0) Texto(contextoArquivo, true);
         string contexto = string.Join("   •   ", new[]
         {
             string.IsNullOrWhiteSpace(provedor) ? null : $"Provedor: {provedor}",
@@ -60,7 +62,7 @@ public sealed class ModalErroIA : Form
         if (arquivosPreservados) Texto("Seus PDFs e a planilha continuam selecionados para uma nova tentativa.", cor: Color.LightGreen);
 
         // Somente a mensagem recebida, sem stack trace ou cabeçalhos de autenticação.
-        string detalhes = $"{contexto}{Environment.NewLine}{Environment.NewLine}{erro.Message}";
+        string detalhes = $"{contextoArquivo}{Environment.NewLine}{contexto}{Environment.NewLine}{Environment.NewLine}{erro.Message}";
         var caixaDetalhes = new TextBox
         {
             Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both,
@@ -104,9 +106,9 @@ public sealed class ModalErroIA : Form
         CancelButton = fechar;
     }
 
-    public static void Exibir(IWin32Window owner, Exception erro, string provedor, string modelo, bool arquivosPreservados = false)
+    public static void Exibir(IWin32Window owner, Exception erro, string provedor, string modelo, bool arquivosPreservados = false, string? arquivo = null)
     {
-        using var modal = new ModalErroIA(erro, provedor, modelo, arquivosPreservados);
+        using var modal = new ModalErroIA(erro, provedor, modelo, arquivosPreservados, arquivo);
         modal.ShowDialog(owner);
     }
 }

@@ -15,22 +15,55 @@ void Rejeitar(Action acao)
 
 const string json = """
     {"fornecedor":"Fornecedor Á","Insumos":[
-      {"Nome":"AMORA","Preco":119.99,"Unidad":"Kg"},
-      {"Nome":"AMORA","Preco":0.0001,"Unidad":"G"},
-      {"Nome":"ITEM SEM BASE","Preco":null,"Unidad":null},
-      {"Nome":"FRASCO","Preco":24.7,"Unidad":"Milheiro"}]}
+      {"Nome":"AMORA","Preco":119.99,"Unidade":"Kg"},
+      {"Nome":"AMORA","Preco":0.0001,"Unidade":"G"},
+      {"Nome":"ITEM SEM BASE","Preco":null,"Unidade":null},
+      {"Nome":"FRASCO","Preco":24.7,"Unidade":"Milheiro"}]}
     """;
 var resultado = LeituraInsumos.Interpretar(json);
 Check(resultado.Insumos.Count == 4 && resultado.Insumos[1].Preco == .0001m,
     "Preservar todas as linhas, repetições, preços pequenos e itens indeterminados.");
 foreach (var unidade in new[] { "Kg", "G", "ML", "L", "Unidade", "Milheiro" })
-    Check(LeituraInsumos.Interpretar(json.Replace("Milheiro", unidade)).Insumos[3].Unidad == unidade,
+    Check(LeituraInsumos.Interpretar(json.Replace("Milheiro", unidade)).Insumos[3].Unidade == unidade,
         "Aceitar unidade " + unidade);
 Rejeitar(() => LeituraInsumos.Interpretar(json.Replace("119.99", "\"119,99\"")));
 Rejeitar(() => LeituraInsumos.Interpretar(json.Replace("Milheiro", "EMBALAGEM")));
-Rejeitar(() => LeituraInsumos.Interpretar(json.Replace("\"Unidad\":\"Kg\"", "\"OutraUnidade\":\"Kg\"")));
+Rejeitar(() => LeituraInsumos.Interpretar(json.Replace("\"Unidade\":\"Kg\"", "\"OutraUnidade\":\"Kg\"")));
 Rejeitar(() => LeituraInsumos.Interpretar(json.Replace("119.99", "-1")));
 Rejeitar(() => LeituraInsumos.Interpretar("{\"fornecedor\":\"X\",\"Insumos\":[]}"));
+
+foreach (var (cabecalho, quantidade, informada, esperada) in new[] {
+    ("Preço kg/l", "50 g", "G", "Kg"),
+    ("Preço kg/l", "250 g", "G", "Kg"),
+    ("Preço kg/l", "800 ml", "ML", "Kg"),
+    ("Preço/L", "800 ml", "ML", "Kg"),
+    ("R$/KG", "50 g", "G", "Kg"),
+    ("R$/G", "1 kg", "Kg", "G"),
+    ("Preço kg/l", "1.000 Cap", "Unidade", "Kg") })
+{
+    string resposta = JsonSerializer.Serialize(new { fornecedor = "Nutrifarm", Insumos = new[] {
+        new { Nome = "ACIDO TRANEXAMICO", Preco = 3299.99m, Unidade = informada,
+            CabecalhoPreco = cabecalho, QuantidadeCotada = quantidade, BasePrecoLinha = (string?)null } } });
+    var corrigido = LeituraInsumos.InterpretarRespostaPdf(resposta);
+    Check(corrigido.Insumos[0].Unidade == esperada && corrigido.Insumos[0].Preco == 3299.99m,
+        "Conferir unidade pelo cabeçalho e dimensão da quantidade, sem alterar preço.");
+    if (esperada == "Kg")
+        Check(ConversorPrecoUnitario.Converter(corrigido.Insumos[0].Preco, esperada) == 3.3m,
+            "Ácido tranexâmico: 3299,99/kg deve produzir 3,3000/g.");
+    Check(!JsonSerializer.Serialize(corrigido).Contains("CabecalhoPreco"), "Não exportar evidências internas.");
+}
+Rejeitar(() => LeituraInsumos.InterpretarRespostaPdf(json));
+
+var fornecedorPadronizado = LeituraInsumos.InterpretarRespostaPdf("""
+    {"fornecedor":"Fornecedor","Insumos":[
+      {"Nome":"A","Preco":100,"Unidade":"L","CabecalhoPreco":"Preço/L","QuantidadeCotada":"1 L","BasePrecoLinha":null},
+      {"Nome":"B","Preco":200,"Unidade":"Unidade","CabecalhoPreco":null,"QuantidadeCotada":"100 Cap","BasePrecoLinha":"Unidade"},
+      {"Nome":"C","Preco":300,"Unidade":"G","CabecalhoPreco":"Preço/G","QuantidadeCotada":"50 g","BasePrecoLinha":null}]}
+    """);
+Check(fornecedorPadronizado.Insumos.All(item => item.Unidade == "Kg"),
+    "Cabeçalho KG ou L deve padronizar todos os insumos do fornecedor como Kg.");
+Check(fornecedorPadronizado.Insumos.Select(item => item.Preco).SequenceEqual(new decimal?[] {100m, 200m, 300m}),
+    "Padronização do fornecedor deve preservar os preços originais.");
 
 foreach (var (provedor, resposta) in new[] {
     ("OpenAI", """{"status":"incomplete","output":[]}"""),
@@ -65,7 +98,7 @@ try
     Check(doc.RootElement.EnumerateObject().Select(x => x.Name).SequenceEqual(new[] { "fornecedor", "Insumos" }),
         "JSON deve ter apenas os campos solicitados.");
     Check(doc.RootElement.GetProperty("Insumos")[0].EnumerateObject().Select(x => x.Name)
-        .SequenceEqual(new[] { "Nome", "Preco", "Unidad" }), "Formato exato do insumo.");
+        .SequenceEqual(new[] { "Nome", "Preco", "Unidade" }), "Formato exato do insumo.");
     Check(LeituraInsumos.Interpretar(await File.ReadAllTextAsync(primeiro)).Insumos.Count == 4,
         "Persistência deve manter todos os itens.");
 
@@ -110,14 +143,14 @@ try
     Check(campos.Insumos.Select(x => x.Encontrado).SequenceEqual(new[] { true, true, false, true }), "Comparar todos os insumos.");
     for (int i = 0; i < resultado.Insumos.Count; i++)
         Check(campos.Insumos[i].Nome == resultado.Insumos[i].Nome && campos.Insumos[i].Preco == resultado.Insumos[i].Preco &&
-            campos.Insumos[i].Unidad == resultado.Insumos[i].Unidad, "Preservar valores originais e ordem.");
+            campos.Insumos[i].Unidade == resultado.Insumos[i].Unidade, "Preservar valores originais e ordem.");
     string camposPath = await ExportadorInsumos.SalvarCamposAsync(campos, primeiro);
     Check(camposPath.EndsWith("_campos.json") && Path.GetDirectoryName(camposPath) == pasta, "Local e sufixo do JSON adicional.");
     using (var camposDoc = JsonDocument.Parse(await File.ReadAllTextAsync(camposPath)))
     {
         Check(camposDoc.RootElement.GetProperty("fornecedor").GetString() == resultado.Fornecedor, "Preservar fornecedor.");
         Check(camposDoc.RootElement.GetProperty("Insumos")[0].EnumerateObject().Select(x => x.Name)
-            .SequenceEqual(new[] { "Nome", "Preco", "Unidad", "Encontrado", "PrecoUnitario" }), "Formato exato do JSON adicional.");
+            .SequenceEqual(new[] { "Nome", "Preco", "Unidade", "Encontrado", "PrecoUnitario" }), "Formato exato do JSON adicional.");
         Check(camposDoc.RootElement.GetProperty("Insumos")[0].GetProperty("PrecoUnitario").GetDecimal() == .12m,
             "Persistir preço convertido no JSON _campos.");
     }
@@ -160,14 +193,14 @@ try
     // Valida interpretação/conversão; a classificação visual pela IA exige PDF real.
     var tabelaKgL = LeituraInsumos.Interpretar("""
         {"fornecedor":"NUTRIFARM","Insumos":[
-          {"Nome":"COGNIZIN (CITICOLINA)","Preco":9900.00,"Unidad":"Kg"},
-          {"Nome":"AMORA PRETA EXT SOLUVEL","Preco":119.99,"Unidad":"Kg"},
-          {"Nome":"VASELINA LIQUIDA","Preco":52.00,"Unidad":"L"}]}
+          {"Nome":"COGNIZIN (CITICOLINA)","Preco":9900.00,"Unidade":"Kg"},
+          {"Nome":"AMORA PRETA EXT SOLUVEL","Preco":119.99,"Unidade":"Kg"},
+          {"Nome":"VASELINA LIQUIDA","Preco":52.00,"Unidade":"L"}]}
         """);
     var convertidosKgL = ComparadorInsumos.Comparar(tabelaKgL, ["COGNIZIN", "AMORA", "VASELINA"]);
     Check(convertidosKgL.Insumos.Select(x => x.PrecoUnitario).SequenceEqual(new decimal?[] { 9.9m, .12m, .052m }),
         "Preços kg/l devem converter para grama/mililitro, preservando o preço original.");
-    Check(convertidosKgL.Insumos[0].Preco == 9900m && convertidosKgL.Insumos[0].Unidad == "Kg",
+    Check(convertidosKgL.Insumos[0].Preco == 9900m && convertidosKgL.Insumos[0].Unidade == "Kg",
         "COGNIZIN: base original Kg e preço unitário por grama.");
 
     string deslocada = Path.Combine(pasta, "cotacao-deslocada.xlsx");

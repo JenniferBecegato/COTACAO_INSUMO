@@ -16,7 +16,7 @@ public sealed class InsumoCampo
 {
     public required string Nome { get; init; }
     public required decimal? Preco { get; init; }
-    public required string? Unidad { get; init; }
+    public required string? Unidade { get; init; }
     public required bool Encontrado { get; init; }
     public required decimal? PrecoUnitario { get; init; }
 }
@@ -79,8 +79,8 @@ public static class ComparadorInsumos
             Fornecedor = resultado.Fornecedor,
             Insumos = resultado.Insumos.Select(item => new InsumoCampo
             {
-                Nome = item.Nome, Preco = item.Preco, Unidad = item.Unidad,
-                PrecoUnitario = ConversorPrecoUnitario.Converter(item.Preco, item.Unidad),
+                Nome = item.Nome, Preco = item.Preco, Unidade = item.Unidade,
+                PrecoUnitario = ConversorPrecoUnitario.Converter(item.Preco, item.Unidade),
                 Encontrado = nomes.Any(nome => Corresponde(NormalizarNome(item.Nome), nome, percentualMinimo))
             }).ToList()
         };

@@ -40,7 +40,7 @@ internal static class ExtracaoPdfIA
         using var response = await client.PostAsJsonAsync(url, corpo);
         await ServicoIAUtil.ValidarRespostaHttpAsync(response);
         using var documento = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return LeituraInsumos.Interpretar(ExtrairTexto(documento.RootElement, provedor));
+        return LeituraInsumos.InterpretarRespostaPdf(ExtrairTexto(documento.RootElement, provedor));
     }
 
     internal static string ExtrairTexto(JsonElement raiz, string provedor)

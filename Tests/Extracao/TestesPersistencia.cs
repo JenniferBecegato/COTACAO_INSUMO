@@ -10,7 +10,7 @@ internal static class TestesPersistencia
         }
         InsumoCampo Item(string nome, decimal? preco, string? unidade, bool encontrado = false) => new()
         {
-            Nome = nome, Preco = preco, Unidad = unidade, Encontrado = encontrado,
+            Nome = nome, Preco = preco, Unidade = unidade, Encontrado = encontrado,
             PrecoUnitario = ConversorPrecoUnitario.Converter(preco, unidade)
         };
         InsumosCampos Lote(string fornecedor, params InsumoCampo[] itens) => new()

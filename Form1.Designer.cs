@@ -16,19 +16,18 @@
 
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             SuspendLayout();
-
+            // 
+            // Form1
+            // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-
             ClientSize = new Size(1400, 850);
-
+            Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-
             Text = "Sistema de cotação de insumos";
-
             Load += Form1_Load;
-
             ResumeLayout(false);
         }
     }

@@ -11,7 +11,7 @@ internal static class TestesPreenchimento
         }
         InsumoCampo Item(string nome, decimal? preco, bool encontrado = true) => new()
         {
-            Nome = nome, Preco = preco, PrecoUnitario = preco, Unidad = "G", Encontrado = encontrado
+            Nome = nome, Preco = preco, PrecoUnitario = preco, Unidade = "G", Encontrado = encontrado
         };
         InsumosCampos Lote(string fornecedor, params InsumoCampo[] itens) => new()
         {

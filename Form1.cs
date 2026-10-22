@@ -1,4 +1,4 @@
-﻿using ClosedXML.Excel;
+using ClosedXML.Excel;
 using OpenAI.Responses;
 
 #pragma warning disable OPENAI001
@@ -42,6 +42,17 @@ namespace COTACAO_INSUMO
         }
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (keyData == (Keys.Control | Keys.C) || keyData == (Keys.Control | Keys.X) ||
+                keyData == (Keys.Control | Keys.V))
+            {
+                var tabela = painelConteudo.Controls.Find("tabelaCotacao", true)
+                    .OfType<DataGridView>().FirstOrDefault();
+                if (tabela?.ContainsFocus == true && !tabela.IsCurrentCellInEditMode)
+                {
+                    ExecutarAreaTransferencia(tabela, keyData & Keys.KeyCode);
+                    return true;
+                }
+            }
             if (keyData == (Keys.Control | Keys.L))
             {
                 var tabela = painelConteudo.Controls.Find("tabelaCotacao", true)
@@ -71,6 +82,23 @@ namespace COTACAO_INSUMO
                 RefazerUltimaAcao(); return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void ExecutarAreaTransferencia(DataGridView tabela, Keys tecla)
+        {
+            try
+            {
+                if (!tabela.EndEdit()) return;
+                historicoTabelaAtivo?.Confirmar();
+                if (tecla == Keys.V) AreaTransferenciaCelulas.Colar(tabela);
+                else AreaTransferenciaCelulas.Copiar(tabela, tecla == Keys.X);
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                MessageBox.Show("A área de transferência está ocupada. Tente novamente.",
+                    "Área de transferência", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally { historicoTabelaAtivo?.Confirmar(); }
         }
 
         // =========================================================
@@ -1799,6 +1827,8 @@ namespace COTACAO_INSUMO
                 var arquivos = pdfsSelecionados.ToArray();
                 string caminhoComparacao = ObterCaminhoPlanilhaPeriodo(lojaSelecionada, mesSelecionado, anoSelecionado);
                 var nomesPlanilha = new Lazy<List<string>>(() => LeitorPlanilhaInsumos.Ler(caminhoComparacao));
+                var errosProcessamento = new List<(Exception Erro, string Arquivo)>();
+                string arquivoProcessamento = caminhoExcelSelecionado;
                 var falhas = new List<string>();
                 var falhasPersistencia = new List<string>();
                 var falhasPreenchimento = new List<string>();
@@ -1823,13 +1853,14 @@ namespace COTACAO_INSUMO
                     var agente = AgenteIAFactory.Criar(provedorIA, apiKeyIA, modeloIA, timeoutIA);
                     for (int i = 0; i < arquivos.Length; i++)
                     {
+                        arquivoProcessamento = arquivos[i];
                         lblStatus.Text = $"Analisando PDF {i + 1}/{arquivos.Length}...\n\n" +
                             Path.GetFileName(arquivos[i]) + "\n\n" +
                             $"PDFs extraídos: {salvos}";
                         try
                         {
                             var resultado = await agente.ExtrairInsumosAsync(arquivos[i]);
-                            pendentes += resultado.Insumos.Count(x => x.Preco == null || x.Unidad == null);
+                            pendentes += resultado.Insumos.Count(x => x.Preco == null || x.Unidade == null);
                             salvos++;
                             try
                             {
@@ -1846,6 +1877,7 @@ namespace COTACAO_INSUMO
                                     }
                                     catch (Exception ex)
                                     {
+                                        errosProcessamento.Add((ex, arquivoProcessamento));
                                         falhas.Add($"{Path.GetFileName(arquivos[i])}: falha ao gravar JSON _campos. {ex.Message}");
                                     }
                                 }
@@ -1861,6 +1893,7 @@ namespace COTACAO_INSUMO
                                 }
                                 catch (Exception ex)
                                 {
+                                    errosProcessamento.Add((ex, arquivoProcessamento));
                                     falhasPreenchimento.Add($"{Path.GetFileName(arquivos[i])}: {ex.Message}");
                                 }
                                 try
@@ -1872,17 +1905,20 @@ namespace COTACAO_INSUMO
                                 }
                                 catch (Exception ex)
                                 {
+                                    errosProcessamento.Add((ex, arquivoProcessamento));
                                     falhasPersistencia.Add($"{Path.GetFileName(arquivos[i])}: {ex.Message}");
                                 }
                             }
                             catch (Exception ex)
                             {
+                                errosProcessamento.Add((ex, arquivoProcessamento));
                                 falhas.Add($"{Path.GetFileName(arquivos[i])}: comparação não concluída. " +
                                     $"{ex.Message}");
                             }
                         }
                         catch (Exception ex)
                         {
+                            errosProcessamento.Add((ex, arquivoProcessamento));
                             falhas.Add($"{Path.GetFileName(arquivos[i])}: {ex.Message}");
                         }
                     }
@@ -1908,7 +1944,7 @@ namespace COTACAO_INSUMO
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, ex.Message, "Extração de insumos", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    errosProcessamento.Add((ex, arquivoProcessamento));
                 }
                 finally
                 {
@@ -1919,6 +1955,9 @@ namespace COTACAO_INSUMO
                     painelMenu.Enabled = true;
                     UseWaitCursor = false;
                 }
+                foreach (var erro in errosProcessamento)
+                    ModalErroIA.Exibir(this, erro.Erro, provedorIA, modeloIA, arquivosPreservados: true, arquivo: erro.Arquivo);
+
                 if (resumoConclusao != null)
                     AbrirTelaConcluido(lojaProcessamento, mesProcessamento, anoProcessamento,
                         caminhoComparacao, resumoConclusao,
@@ -4268,6 +4307,19 @@ namespace COTACAO_INSUMO
                 if (int.TryParse(Convert.ToString(quantidadeLinhasSalva?.Value), out int linhasSalvas) && linhasSalvas >= 0)
                     ultimaLinha = linhasSalvas + 1;
 
+                // Somente cores registradas pelo editor representam pinturas do usuário.
+                var coresUsuario = new Dictionary<string, int>();
+                var propriedadeCores = workbook.CustomProperties
+                    .FirstOrDefault(p => p.Name == "CotacaoGridUserColors");
+                if (propriedadeCores?.Value is string coresJson)
+                {
+                    try
+                    {
+                        coresUsuario = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(coresJson)
+                            ?? new Dictionary<string, int>();
+                    }
+                    catch (System.Text.Json.JsonException) { }
+                }
                 string[]? papeisColunas = null;
                 var propriedadePapeis = workbook.CustomProperties
                     .FirstOrDefault(propriedade => propriedade.Name == "CotacaoGridRoles");
@@ -4463,34 +4515,11 @@ namespace COTACAO_INSUMO
                         // COR
                         // =============================================
 
-                        try
+                        if (coresUsuario.TryGetValue($"{linhaExcel}:{coluna}", out int argb))
                         {
-                            XLColor corExcel =
-                                celulaExcel
-                                    .Style
-                                    .Fill
-                                    .BackgroundColor;
-
-                            if (
-                                corExcel.ColorType ==
-                                XLColorType.Color
-                            )
-                            {
-                                Color cor =
-                                    corExcel.Color;
-
-                                celulaGrid.Style.BackColor =
-                                    cor;
-
-                                celulaGrid.Style.ForeColor =
-                                    ObterCorTexto(
-                                        cor
-                                    );
-                            }
-                        }
-                        catch
-                        {
-                            // mantém cor padrão
+                            Color cor = Color.FromArgb(argb);
+                            celulaGrid.Style.BackColor = cor;
+                            celulaGrid.Style.ForeColor = ObterCorTexto(cor);
                         }
                     }
                 }
@@ -4885,6 +4914,12 @@ namespace COTACAO_INSUMO
 
             menu.Items.Add("Localizar... (Ctrl + L)", null,
                 (s, e) => LocalizarNaCotacao.Abrir(this, dgv));
+            menu.Items.Add("Copiar (Ctrl + C)", null,
+                (s, e) => ExecutarAreaTransferencia(dgv, Keys.C));
+            menu.Items.Add("Recortar (Ctrl + X)", null,
+                (s, e) => ExecutarAreaTransferencia(dgv, Keys.X));
+            menu.Items.Add("Colar (Ctrl + V)", null,
+                (s, e) => ExecutarAreaTransferencia(dgv, Keys.V));
 
             ToolStripMenuItem pintar =
                 new ToolStripMenuItem(
@@ -5375,23 +5410,16 @@ namespace COTACAO_INSUMO
         private void RemoverCorSelecaoGrid(
     DataGridView dgv)
         {
-            Color fundoPadrao =
-                Color.FromArgb(
-                    24,
-                    24,
-                    24
-                );
-
             foreach (
                 DataGridViewCell celula
                 in dgv.SelectedCells
             )
             {
                 celula.Style.BackColor =
-                    fundoPadrao;
+                    Color.Empty;
 
                 celula.Style.ForeColor =
-                    Color.White;
+                    Color.Empty;
             }
 
             dgv.Refresh();
@@ -5496,6 +5524,17 @@ namespace COTACAO_INSUMO
                             .ToArray()));
                     workbook.CustomProperties.Delete("CotacaoGridRowCount");
                     workbook.CustomProperties.Add("CotacaoGridRowCount", dgv.Rows.Count.ToString());
+                    var coresUsuario = new Dictionary<string, int>();
+                    for (int linhaCor = 0; linhaCor < dgv.Rows.Count; linhaCor++)
+                        for (int colunaCor = 0; colunaCor < colunasOrdenadas.Length; colunaCor++)
+                        {
+                            Color corUsuario = dgv.Rows[linhaCor].Cells[colunasOrdenadas[colunaCor].Index].Style.BackColor;
+                            if (!corUsuario.IsEmpty)
+                                coresUsuario[$"{linhaCor + 2}:{colunaCor + 1}"] = corUsuario.ToArgb();
+                        }
+                    workbook.CustomProperties.Delete("CotacaoGridUserColors");
+                    workbook.CustomProperties.Add("CotacaoGridUserColors",
+                        System.Text.Json.JsonSerializer.Serialize(coresUsuario));
                     int ultimaLinhaAnterior = planilha.LastRowUsed()?.RowNumber() ?? 1;
                     if (ultimaLinhaAnterior > dgv.Rows.Count + 1)
                         planilha.Rows(dgv.Rows.Count + 2, ultimaLinhaAnterior).Delete();

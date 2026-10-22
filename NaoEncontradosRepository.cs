@@ -59,14 +59,14 @@ public sealed class NaoEncontradosRepository
                 comando.Vincular(4, resultado.Fornecedor);
                 comando.Vincular(5, item.Nome);
                 comando.Vincular(6, (item.PrecoUnitario ?? 0m).ToString(CultureInfo.InvariantCulture));
-                comando.Vincular(7, item.Unidad switch
+                comando.Vincular(7, item.Unidade switch
                 {
                     "Kg" or "G" => "GRAMA",
                     "L" or "ML" => "MILILITRO",
                     "Unidade" or "Milheiro" => "UNIDADE",
                     _ => "NAO_IDENTIFICADO"
                 });
-                comando.Vincular(8, item.Unidad ?? "");
+                comando.Vincular(8, item.Unidade ?? "");
                 comando.Vincular(9, dataRegistro.ToString("O", CultureInfo.InvariantCulture));
                 comando.Ler();
                 gravados++;
