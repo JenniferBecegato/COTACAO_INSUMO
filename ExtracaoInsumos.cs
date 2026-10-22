@@ -63,11 +63,7 @@ public static class LeituraInsumos
         Regra do sistema para este fornecedor/documento: se algum cabeçalho da
         coluna de preço indicar KG, L ou KG/L, atribua Unidade "Kg" a TODOS os
         insumos deste fornecedor. Essa padronização tem prioridade sobre as regras
-        anteriores de Unidade, inclusive para líquidos e itens contados,
-        exceto cápsulas: cápsulas (CAP, CAPS, cápsula/capsula) normalmente são
-        cotadas por unidade. Para elas, use Unidade "Unidade", mesmo sob cabeçalho
-        KG/L ou na padronização do fornecedor. Se a base do preço indicar
-        explicitamente milheiro/MLH/1000 un, preserve "Milheiro".
+        anteriores de Unidade, inclusive para líquidos e itens contados.
         Preserve o preço e transcreva o cabeçalho real em CabecalhoPreco.
 
         Exemplos de leitura de uma tabela com cabeçalho "Preço kg/l":
@@ -140,14 +136,7 @@ public static class LeituraInsumos
                     unidade = massa == volume ? null : massa ? "Kg" : "L";
                 }
             }
-            bool capsulas = Regex.IsMatch(
-                (item["Nome"]?.GetValue<string>() ?? "") + " " + quantidade,
-                @"\b(?:C[ÁA]PSULAS?|CAPS?\.?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            bool precoPorMilheiro = baseLinha == "Milheiro" || Regex.IsMatch(cabecalho ?? "",
-                @"\b(?:MILHEIROS?|MLH|MIL|1000\s*(?:UN|UND|UNIDADES?))\b",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            item["Unidade"] = capsulas ? (precoPorMilheiro ? "Milheiro" : "Unidade")
-                : padronizarKg ? "Kg" : unidade;
+            item["Unidade"] = padronizarKg ? "Kg" : unidade;
             item.Remove("CabecalhoPreco");
             item.Remove("QuantidadeCotada");
             item.Remove("BasePrecoLinha");

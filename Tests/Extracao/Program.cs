@@ -39,8 +39,7 @@ foreach (var (cabecalho, quantidade, informada, esperada) in new[] {
     ("Preço/L", "800 ml", "ML", "Kg"),
     ("R$/KG", "50 g", "G", "Kg"),
     ("R$/G", "1 kg", "Kg", "G"),
-    ("Preço kg/l", "1.000 Cap", "Unidade", "Unidade"),
-    ("R$/MLH", "1.000 cápsulas", "Kg", "Milheiro") })
+    ("Preço kg/l", "1.000 Cap", "Unidade", "Kg") })
 {
     string resposta = JsonSerializer.Serialize(new { fornecedor = "Nutrifarm", Insumos = new[] {
         new { Nome = "ACIDO TRANEXAMICO", Preco = 3299.99m, Unidade = informada,
@@ -61,8 +60,8 @@ var fornecedorPadronizado = LeituraInsumos.InterpretarRespostaPdf("""
       {"Nome":"B","Preco":200,"Unidade":"Unidade","CabecalhoPreco":null,"QuantidadeCotada":"100 Cap","BasePrecoLinha":"Unidade"},
       {"Nome":"C","Preco":300,"Unidade":"G","CabecalhoPreco":"Preço/G","QuantidadeCotada":"50 g","BasePrecoLinha":null}]}
     """);
-Check(fornecedorPadronizado.Insumos.Select(item => item.Unidade).SequenceEqual(new[] { "Kg", "Unidade", "Kg" }),
-    "Cabeçalho KG ou L deve padronizar o fornecedor como Kg, exceto cápsulas por unidade.");
+Check(fornecedorPadronizado.Insumos.All(item => item.Unidade == "Kg"),
+    "Cabeçalho KG ou L deve padronizar todos os insumos do fornecedor como Kg.");
 Check(fornecedorPadronizado.Insumos.Select(item => item.Preco).SequenceEqual(new decimal?[] {100m, 200m, 300m}),
     "Padronização do fornecedor deve preservar os preços originais.");
 
