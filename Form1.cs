@@ -2925,6 +2925,62 @@ namespace COTACAO_INSUMO
                     colunaSelecionar
                 );
 
+                bool alterandoSelecao = false;
+                CheckState EstadoSelecao()
+                {
+                    int marcados = dgv.Rows.Cast<DataGridViewRow>()
+                        .Count(linha => Equals(linha.Cells["Selecionar"].Value, true));
+                    return marcados == 0 ? CheckState.Unchecked
+                        : marcados == dgv.Rows.Count ? CheckState.Checked
+                        : CheckState.Indeterminate;
+                }
+
+                dgv.CellPainting += (s, e) =>
+                {
+                    if (e.RowIndex != -1 || e.ColumnIndex != colunaSelecionar.Index) return;
+                    e.PaintBackground(e.ClipBounds, true);
+                    e.Paint(e.ClipBounds, DataGridViewPaintParts.Border);
+                    CheckState estado = EstadoSelecao();
+                    var estadoVisual = estado == CheckState.Checked
+                        ? System.Windows.Forms.VisualStyles.CheckBoxState.CheckedNormal
+                        : estado == CheckState.Indeterminate
+                            ? System.Windows.Forms.VisualStyles.CheckBoxState.MixedNormal
+                            : System.Windows.Forms.VisualStyles.CheckBoxState.UncheckedNormal;
+                    Size tamanho = CheckBoxRenderer.GetGlyphSize(e.Graphics!, estadoVisual);
+                    var posicao = new Point(e.CellBounds.Left + (e.CellBounds.Width - tamanho.Width) / 2,
+                        e.CellBounds.Top + (e.CellBounds.Height - tamanho.Height) / 2);
+                    CheckBoxRenderer.DrawCheckBox(e.Graphics!, posicao, estadoVisual);
+                    e.Handled = true;
+                };
+                dgv.ColumnHeaderMouseClick += (s, e) =>
+                {
+                    if (e.ColumnIndex != colunaSelecionar.Index || e.Button != MouseButtons.Left) return;
+                    dgv.EndEdit();
+                    bool selecionar = EstadoSelecao() != CheckState.Checked;
+                    alterandoSelecao = true;
+                    try
+                    {
+                        foreach (DataGridViewRow linha in dgv.Rows)
+                            linha.Cells["Selecionar"].Value = selecionar;
+                    }
+                    finally
+                    {
+                        alterandoSelecao = false;
+                        dgv.InvalidateCell(colunaSelecionar.Index, -1);
+                    }
+                };
+                dgv.CurrentCellDirtyStateChanged += (s, e) =>
+                {
+                    if (dgv.IsCurrentCellDirty && dgv.CurrentCell?.OwningColumn == colunaSelecionar)
+                        dgv.CommitEdit(DataGridViewDataErrorContexts.Commit);
+                };
+                dgv.CellValueChanged += (s, e) =>
+                {
+                    if (!alterandoSelecao && e.ColumnIndex == colunaSelecionar.Index)
+                        dgv.InvalidateCell(colunaSelecionar.Index, -1);
+                };
+                colunaSelecionar.HeaderCell.ToolTipText = "Selecionar ou desmarcar todos os itens deste fornecedor";
+
                 // Somente checkbox editável
                 foreach (
                     DataGridViewColumn coluna
@@ -2943,42 +2999,6 @@ namespace COTACAO_INSUMO
                 dgv.Columns["Data"]!.FillWeight = 65;
             return dgv;
             }
-
-            Button btnSelecionarTudo =
-    CriarBotao(
-        "Selecionar tudo",
-        130,
-        38
-    );
-
-            btnSelecionarTudo.Location =
-                new Point(555, 640);
-
-            bool todosSelecionados =
-                false;
-
-            btnSelecionarTudo.Click +=
-                (s, e) =>
-                {
-                    todosSelecionados =
-                        !todosSelecionados;
-
-                    foreach (
-                        DataGridViewRow linha
-                        in grupos.SelectMany(g => g.Grid.Rows.Cast<DataGridViewRow>())
-                    )
-                    {
-                        linha
-                            .Cells["Selecionar"]
-                            .Value =
-                            todosSelecionados;
-                    }
-
-                    btnSelecionarTudo.Text =
-                        todosSelecionados
-                            ? "Desmarcar tudo"
-                            : "Selecionar tudo";
-                };
 
             // =========================================================
             // BOTÃO EXCLUIR
@@ -3006,8 +3026,6 @@ namespace COTACAO_INSUMO
                 grupos.Clear();
                 fornecedores.Controls.Clear();
                 fornecedores.AutoScrollPosition = Point.Empty;
-                todosSelecionados = false;
-                btnSelecionarTudo.Text = "Selecionar tudo";
 
                 string empresa =
                     cmbEmpresa.SelectedItem?
@@ -3241,7 +3259,6 @@ namespace COTACAO_INSUMO
             tela.Controls.AddRange([filtros, quantidade, orientacao, exportar]);
             exportar.Size = new Size(148, 40);
             exportar.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            btnSelecionarTudo.Font = new Font("Segoe UI", 9F);
             btnExcluir.ForeColor = Color.FromArgb(246, 143, 143);
             btnExcluir.FlatAppearance.BorderColor = Color.FromArgb(105, 52, 58);
             btnExcluir.BackColor = Color.FromArgb(43, 27, 32);
@@ -3270,8 +3287,6 @@ namespace COTACAO_INSUMO
                 int acoesY = Math.Max(topoLista + 116,
                     tela.ClientSize.Height - btnExcluir.Height - 12);
                 btnExcluir.Location = new Point(Math.Max(10, tela.ClientSize.Width - 10 - btnExcluir.Width), acoesY);
-                btnSelecionarTudo.Location = new Point(Math.Max(10,
-                    btnExcluir.Left - btnSelecionarTudo.Width - 12), acoesY);
                 fornecedores.SetBounds(10, topoLista, largura,
                     Math.Max(100, acoesY - topoLista - 16));
             }
@@ -3292,10 +3307,6 @@ namespace COTACAO_INSUMO
             tela.Controls.Add(btnBuscar);
 
             tela.Controls.Add(fornecedores);
-
-            tela.Controls.Add(
-                btnSelecionarTudo
-            );
 
             tela.Controls.Add(
                 btnExcluir
@@ -5093,7 +5104,11 @@ namespace COTACAO_INSUMO
                     fornecedores = fornecedores.Where(coluna => coluna.Visible)
                         .OrderBy(coluna => coluna.DisplayIndex).ToArray();
                     int quantidadeVisivel = fixas.Length + fornecedores.Length;
-                    int fornecedoresNaTela = Math.Max(1, Math.Min(26, quantidadeVisivel) - fixas.Length);
+                    // As 26 colunas incluem as colunas de identificação e os fornecedores.
+                    // As excedentes conservam a largura e ficam acessíveis pela barra horizontal.
+                    const int limiteColunasNaTela = 26;
+                    int fornecedoresNaTela = Math.Max(1,
+                        Math.Min(limiteColunasNaTela, quantidadeVisivel) - fixas.Length);
                     int larguraFixa = fixas.Sum(coluna => coluna.Width);
                     int disponivel = Math.Max(fornecedoresNaTela * 2, dgv.ClientSize.Width - larguraFixa
                         - SystemInformation.VerticalScrollBarWidth - 2);
@@ -5136,6 +5151,56 @@ namespace COTACAO_INSUMO
 
             DataGridViewColumn? colunaMenu = null;
             ContextMenuStrip menuCabecalho = new ContextMenuStrip();
+            menuCabecalho.Items.Add("Adicionar coluna", null, (s, e) =>
+            {
+                using Form dialogo = new Form
+                {
+                    Text = "Adicionar coluna", ClientSize = new Size(420, 155),
+                    StartPosition = FormStartPosition.CenterParent,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    MinimizeBox = false, MaximizeBox = false
+                };
+                Label legenda = new() { Text = "Título da nova coluna", AutoSize = true,
+                    Location = new Point(15, 15) };
+                TextBox titulo = new() { Location = new Point(15, 42), Width = 390 };
+                Button adicionar = new() { Text = "Adicionar", Location = new Point(215, 100),
+                    Size = new Size(90, 32) };
+                Button cancelar = new() { Text = "Cancelar", Location = new Point(315, 100),
+                    Size = new Size(90, 32), DialogResult = DialogResult.Cancel };
+                adicionar.Click += (sender, args) =>
+                {
+                    if (string.IsNullOrWhiteSpace(titulo.Text))
+                    {
+                        MessageBox.Show(dialogo, "Digite o título da nova coluna.", "Adicionar coluna",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        titulo.Focus();
+                        return;
+                    }
+                    dialogo.DialogResult = DialogResult.OK;
+                };
+                dialogo.Controls.AddRange([legenda, titulo, adicionar, cancelar]);
+                dialogo.AcceptButton = adicionar;
+                dialogo.CancelButton = cancelar;
+                dialogo.Shown += (sender, args) => titulo.Focus();
+                if (dialogo.ShowDialog(this) != DialogResult.OK) return;
+                dgv.EndEdit();
+                historico?.Confirmar();
+                var novaColuna = new DataGridViewTextBoxColumn
+                {
+                    Name = $"COL_{Guid.NewGuid():N}", HeaderText = titulo.Text.Trim(),
+                    Tag = "FORNECEDOR", MinimumWidth = 2,
+                    SortMode = DataGridViewColumnSortMode.NotSortable,
+                    ReadOnly = false
+                };
+                novaColuna.HeaderCell.ContextMenuStrip = menuCabecalho;
+                dgv.Columns.Add(novaColuna);
+                AjustarLargurasFornecedores();
+                dgv.ClearSelection();
+                novaColuna.Selected = true;
+                dgv.FirstDisplayedScrollingColumnIndex = novaColuna.Index;
+                MarcarAlteracao();
+            });
+
             menuCabecalho.Items.Add("Editar título", null, (s, e) =>
             {
                 if (colunaMenu == null || colunaMenu.DataGridView != dgv) return;
@@ -5251,12 +5316,16 @@ namespace COTACAO_INSUMO
                     historico?.Agendar();
                 }
             };
+            dgv.ColumnAdded += (s, e) =>
+            {
+                if (historico?.Restaurando != true) AjustarLargurasFornecedores();
+            };
             dgv.SizeChanged += (s, e) => { AjustarLargurasFornecedores(); historico?.Sincronizar(); };
             AjustarLargurasFornecedores();
 
             dgv.KeyDown += (s, e) =>
             {
-                if (e.KeyCode != Keys.Delete || dgv.IsCurrentCellInEditMode) return;
+                if ((e.KeyCode != Keys.Delete && e.KeyCode != Keys.Back) || dgv.IsCurrentCellInEditMode) return;
                 if (dgv.SelectedColumns.Count > 0)
                     ApagarColunasSelecionadas();
                 else
@@ -5533,6 +5602,21 @@ namespace COTACAO_INSUMO
             // =========================================================
             // CLIQUE DIREITO
             // =========================================================
+
+            dgv.CellClick += (s, e) =>
+            {
+                if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+                var coluna = dgv.Columns[e.ColumnIndex];
+                string papel = NormalizarCabecalhoGrid(coluna.Tag as string ?? coluna.HeaderText);
+                if (!papel.StartsWith("INSUMO", StringComparison.Ordinal)) return;
+                var celula = dgv.Rows[e.RowIndex].Cells[e.ColumnIndex];
+                if (string.IsNullOrWhiteSpace(Convert.ToString(celula.FormattedValue))) return;
+                celula.Style.WrapMode = DataGridViewTriState.True;
+                int alturaAnterior = dgv.Rows[e.RowIndex].Height;
+                dgv.AutoResizeRow(e.RowIndex, DataGridViewAutoSizeRowMode.AllCellsExceptHeader);
+                dgv.Rows[e.RowIndex].Height = Math.Max(alturaAnterior, dgv.Rows[e.RowIndex].Height);
+                dgv.InvalidateRow(e.RowIndex);
+            };
 
             dgv.CellMouseDown +=
                 (s, e) =>
