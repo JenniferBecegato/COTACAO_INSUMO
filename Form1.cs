@@ -1910,6 +1910,7 @@ namespace COTACAO_INSUMO
                     for (int i = 0; i < arquivos.Length; i++)
                     {
                         arquivoProcessamento = arquivos[i];
+                        bool pdfIncluidoNaCotacao = false;
                         lblStatus.Text = $"Analisando PDF {i + 1}/{arquivos.Length}...\n\n" +
                             Path.GetFileName(arquivos[i]) + "\n\n" +
                             $"PDFs extraídos: {salvos}";
@@ -1946,6 +1947,10 @@ namespace COTACAO_INSUMO
                                     fornecedoresCriados += preenchimento.FornecedoresCriados;
                                     pendenciasPreenchimento.AddRange(preenchimento.Pendencias.Select(p =>
                                         $"{Path.GetFileName(arquivos[i])}: {p}"));
+                                    pdfIncluidoNaCotacao = preenchimento.PrecosPreenchidos > 0;
+                                    if (preenchimento.PrecosPreenchidos == 0)
+                                        pendenciasPreenchimento.Add(
+                                            $"{Path.GetFileName(arquivos[i])}: nenhum valor incluído na cotação; PDF mantido para nova tentativa.");
                                 }
                                 catch (Exception ex)
                                 {
@@ -1976,6 +1981,17 @@ namespace COTACAO_INSUMO
                         {
                             errosProcessamento.Add((ex, arquivoProcessamento));
                             falhas.Add($"{Path.GetFileName(arquivos[i])}: {ex.Message}");
+                        }
+                        if (pdfIncluidoNaCotacao)
+                        {
+                            // Pendências de itens e falhas auxiliares não desfazem os valores já salvos.
+                            // Retira somente da seleção; o arquivo PDF original é preservado.
+                            int indice = pdfsSelecionados.IndexOf(arquivos[i]);
+                            if (indice >= 0)
+                            {
+                                pdfsSelecionados.RemoveAt(indice);
+                                dgvPdfs.Rows.RemoveAt(indice);
+                            }
                         }
                     }
                     string mensagem = $"{salvos} de {arquivos.Length} PDF(s) extraído(s) e " +
@@ -5053,6 +5069,10 @@ namespace COTACAO_INSUMO
 
             if (colunaMaisBarato >= 0)
             {
+                // A coluna de resumo fica sempre depois dos três campos da cotação,
+                // independentemente dos nomes ou papéis salvos dos fornecedores.
+                dgv.Columns[colunaMaisBarato].DisplayIndex = Math.Min(3, dgv.Columns.Count - 1);
+
                 for (
                     int linha = 0;
                     linha < dgv.Rows.Count;
@@ -5871,8 +5891,59 @@ namespace COTACAO_INSUMO
             btnNaoLocalizados.ForeColor = Color.FromArgb(245, 190, 85);
             topo.Controls.Add(btnNaoLocalizados);
             btnNaoLocalizados.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            FlowLayoutPanel legenda = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = true,
+                Location = new Point(15, 90),
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                BackColor = Color.Transparent
+            };
+            foreach (var item in new[]
+            {
+                (Cor: Color.Red, Texto: "Saiu de linha ou falta do insumo"),
+                (Cor: Color.Yellow, Texto: "Comprado"),
+                (Cor: Color.Green, Texto: "Dividir com a Drug"),
+                (Cor: Color.LightBlue, Texto: "Urgente")
+            })
+            {
+                FlowLayoutPanel entrada = new FlowLayoutPanel
+                {
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    WrapContents = false,
+                    Margin = new Padding(0, 0, 22, 4)
+                };
+                Panel bolinha = new Panel
+                {
+                    Size = new Size(12, 12),
+                    Margin = new Padding(0, 5, 7, 0)
+                };
+                Color cor = item.Cor;
+                bolinha.Paint += (s, e) =>
+                {
+                    e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    using SolidBrush pincel = new SolidBrush(cor);
+                    e.Graphics.FillEllipse(pincel, 0, 0, 11, 11);
+                };
+                entrada.Controls.Add(bolinha);
+                entrada.Controls.Add(new Label
+                {
+                    Text = item.Texto,
+                    AutoSize = true,
+                    ForeColor = Color.White,
+                    Font = new Font("Segoe UI", 9F),
+                    Margin = new Padding(0, 2, 0, 2)
+                });
+                legenda.Controls.Add(entrada);
+            }
+            topo.Controls.Add(legenda);
             void AjustarAtalhoTabela()
             {
+                legenda.MaximumSize = new Size(Math.Max(1, topo.ClientSize.Width - 30), 0);
+                estrutura.RowStyles[0].Height = legenda.Bottom + 10;
                 btnNaoLocalizados.Location = new Point(Math.Max(325,
                     topo.ClientSize.Width - btnNaoLocalizados.Width - 16), 20);
                 int larguraTitulo = Math.Max(1, btnNaoLocalizados.Left - lblTitulo.Left - 16);
@@ -5885,7 +5956,6 @@ namespace COTACAO_INSUMO
                 lblAlteracoes.Location = new Point(325, 65);
             }
             topo.Resize += (s, e) => AjustarAtalhoTabela();
-            estrutura.RowStyles[0].Height = 100F;
             AjustarAtalhoTabela();
             btnNaoLocalizados.Click += (s, e) => SairDaTabela(() =>
             {

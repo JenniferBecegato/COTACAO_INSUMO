@@ -115,6 +115,8 @@ public static class PreenchedorCotacao
                     papeis.Add(papel);
                     return coluna;
                 }
+                int colunaMenor = colunasMenor.Length == 1 ? colunasMenor[0]
+                    : AdicionarColuna("Fornecedor mais em conta", "FORNECEDOR MAIS EM CONTA", estrutura.ColunaInsumos);
                 int fornecedor = matchFornecedor.Indice;
                 if (fornecedor == 0)
                 {
@@ -123,8 +125,6 @@ public static class PreenchedorCotacao
                     fornecedores.Add(fornecedor);
                     criados++;
                 }
-                int colunaMenor = colunasMenor.Length == 1 ? colunasMenor[0]
-                    : AdicionarColuna("Fornecedor mais em conta", "FORNECEDOR MAIS EM CONTA", estrutura.ColunaInsumos);
                 foreach (int coluna in fornecedores)
                     foreach (var linha in estrutura.Insumos)
                         aba.Cell(linha.Linha, coluna).Style.NumberFormat.Format = "0.0000";
