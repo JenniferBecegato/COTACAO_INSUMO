@@ -77,6 +77,22 @@ foreach (var (provedor, resposta) in new[] {
 string pasta = Path.Combine(AppContext.BaseDirectory, "teste-" + Guid.NewGuid().ToString("N"));
 try
 {
+    string compartilhado = Path.Combine(pasta, "compartilhado.db");
+    string localA = Path.Combine(pasta, "maquina-a.db");
+    string localB = Path.Combine(pasta, "maquina-b.db");
+    var maquinaA = new ConfiguracaoIARepository(compartilhado, localA);
+    var maquinaB = new ConfiguracaoIARepository(compartilhado, localB);
+    maquinaA.Salvar(new ConfiguracaoIA("OpenAI", "modelo-a", "chave-a-teste", 120));
+    Check(maquinaB.Carregar() is { Modelo: "modelo-a", ChaveApi: "", TimeoutSegundos: 120 },
+        "Outra máquina deve carregar configurações sem receber a chave.");
+    var desfazer = maquinaB.CapturarRestauracao();
+    maquinaB.Salvar(new ConfiguracaoIA("OpenAI", "modelo-b", "chave-b-teste", 180));
+    Check(maquinaA.Carregar() is { Modelo: "modelo-b", ChaveApi: "chave-a-teste" },
+        "Alteração compartilhada deve preservar a chave de cada máquina.");
+    Check(maquinaB.Carregar()?.ChaveApi == "chave-b-teste", "Persistir chave local.");
+    desfazer();
+    Check(maquinaB.Carregar() is { Modelo: "modelo-a", ChaveApi: "" },
+        "Desfazer deve restaurar configurações e chave local.");
     var configuracoesJson = new ConfiguracaoIARepository(Path.Combine(pasta, "configuracoes.db"));
     Check(configuracoesJson.CarregarPercentualMinimoMatch() == 75m, "Similaridade padrão de 75%.");
     foreach (decimal limite in new[] { 0m, 82.5m, 100m })
@@ -94,6 +110,21 @@ try
             "Percentual inválido não deve substituir a configuração salva.");
     }
     Check(!configuracoesJson.CarregarGravacaoJson(), "Gravação JSON deve iniciar desligada.");
+    Check(configuracoesJson.CarregarPastaCotacoes() == "", "Pasta vazia deve manter Documentos como padrão.");
+    string raizCotacoes = Path.Combine(pasta, "Cotações personalizadas");
+    configuracoesJson.SalvarPastaCotacoes(raizCotacoes);
+    Check(Directory.Exists(raizCotacoes)
+        && new ConfiguracaoIARepository(Path.Combine(pasta, "configuracoes.db")).CarregarPastaCotacoes() == raizCotacoes,
+        "Criar e persistir a pasta raiz das cotações.");
+    bool pastaRelativaRejeitada = false;
+    try { configuracoesJson.SalvarPastaCotacoes("pasta-relativa"); }
+    catch (ArgumentException) { pastaRelativaRejeitada = true; }
+    Check(pastaRelativaRejeitada && configuracoesJson.CarregarPastaCotacoes() == raizCotacoes,
+        "Caminho inválido não deve substituir a pasta salva.");
+    configuracoesJson.SalvarPastaCotacoes("  ");
+    Check(new ConfiguracaoIARepository(Path.Combine(pasta, "configuracoes.db")).CarregarPastaCotacoes() == "",
+        "Limpar a pasta deve restaurar o padrão após reabrir.");
+    Directory.Delete(raizCotacoes);
     configuracoesJson.SalvarGravacaoJson(true);
     Check(new ConfiguracaoIARepository(Path.Combine(pasta, "configuracoes.db")).CarregarGravacaoJson(),
         "Opção JSON deve persistir entre sessões.");

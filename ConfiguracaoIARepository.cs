@@ -10,12 +10,14 @@ public sealed record ConfiguracaoIA(string Provedor, string Modelo, string Chave
 public sealed class ConfiguracaoIARepository
 {
     private readonly string caminho;
+    private readonly string caminhoChaves;
 
-    public ConfiguracaoIARepository(string? caminhoBanco = null)
+    public ConfiguracaoIARepository(string? caminhoBanco = null, string? caminhoBancoChaves = null)
     {
-        caminho = caminhoBanco ?? Path.Combine(
+        caminho = caminhoBanco ?? LocalBanco.CaminhoAtual;
+        caminhoChaves = caminhoBancoChaves ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "COTACAO_INSUMO", "configuracoes.db");
+            "COTACAO_INSUMO", "chaves-locais.db");
     }
 
     public ConfiguracaoIA? Carregar(string? provedor = null)
@@ -28,10 +30,33 @@ public sealed class ConfiguracaoIARepository
             consulta.Vincular(1, provedor);
         if (!consulta.Ler())
             return null;
-        byte[] chave = ProtectedData.Unprotect(Convert.FromBase64String(consulta.Texto(2)),
-            null, DataProtectionScope.CurrentUser);
+        string chave = CarregarChave(consulta.Texto(0));
         return new ConfiguracaoIA(consulta.Texto(0), consulta.Texto(1),
-            Encoding.UTF8.GetString(chave), int.Parse(consulta.Texto(3)));
+            chave, int.Parse(consulta.Texto(3)));
+    }
+
+    private string CarregarChave(string provedor)
+    {
+        using var banco = new Banco(caminhoChaves);
+        using var consulta = banco.Preparar("SELECT chave_protegida FROM chaves_locais WHERE provedor = ?1;");
+        consulta.Vincular(1, provedor);
+        if (!consulta.Ler()) return "";
+        try
+        {
+            return Encoding.UTF8.GetString(ProtectedData.Unprotect(
+                Convert.FromBase64String(consulta.Texto(0)), null, DataProtectionScope.CurrentUser));
+        }
+        catch (CryptographicException) { return ""; }
+        catch (FormatException) { return ""; }
+    }
+
+    private void SalvarChave(string provedor, string chaveProtegida)
+    {
+        using var banco = new Banco(caminhoChaves);
+        using var comando = banco.Preparar("INSERT INTO chaves_locais (provedor, chave_protegida) VALUES (?1, ?2) ON CONFLICT(provedor) DO UPDATE SET chave_protegida = excluded.chave_protegida;");
+        comando.Vincular(1, provedor);
+        comando.Vincular(2, chaveProtegida);
+        comando.Ler();
     }
 
     public void Salvar(ConfiguracaoIA configuracao)
@@ -57,9 +82,11 @@ public sealed class ConfiguracaoIARepository
                 """);
             comando.Vincular(1, configuracao.Provedor);
             comando.Vincular(2, configuracao.Modelo);
-            comando.Vincular(3, chaveProtegida);
+            comando.Vincular(3, "");
             comando.Vincular(4, configuracao.TimeoutSegundos.ToString());
             comando.Ler();
+            banco.Executar("UPDATE configuracao_ia SET chave_protegida = ''; ");
+            SalvarChave(configuracao.Provedor, chaveProtegida);
             banco.Executar("COMMIT;");
         }
         catch
@@ -88,6 +115,33 @@ public sealed class ConfiguracaoIARepository
         comando.Ler();
     }
 
+    public string CarregarPastaCotacoes()
+    {
+        using var banco = new Banco(caminho);
+        using var consulta = banco.Preparar("SELECT valor FROM configuracao_geral WHERE nome = 'pasta_raiz_cotacoes';");
+        return consulta.Ler() ? consulta.Texto(0) : "";
+    }
+
+    public void SalvarPastaCotacoes(string pasta)
+    {
+        pasta = pasta.Trim();
+        if (pasta.Length > 0)
+        {
+            if (!Path.IsPathFullyQualified(pasta))
+                throw new ArgumentException("Informe o caminho completo da pasta das cotações.");
+            pasta = Path.GetFullPath(pasta);
+            Directory.CreateDirectory(pasta);
+            // Confirma a permissão de gravação antes de trocar a configuração.
+            string verificacao = Path.Combine(pasta, ".cotacao-verificacao-" + Guid.NewGuid().ToString("N"));
+            using (new FileStream(verificacao, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                1, FileOptions.DeleteOnClose)) { }
+        }
+        using var banco = new Banco(caminho);
+        using var comando = banco.Preparar("INSERT INTO configuracao_geral (nome, valor) VALUES ('pasta_raiz_cotacoes', ?1) ON CONFLICT(nome) DO UPDATE SET valor = excluded.valor;");
+        comando.Vincular(1, pasta);
+        comando.Ler();
+    }
+
     public bool CarregarGravacaoJson()
     {
         using var banco = new Banco(caminho);
@@ -106,11 +160,32 @@ public sealed class ConfiguracaoIARepository
     public Action CapturarRestauracao()
     {
         var registros = new List<string[]>();
+        var chaves = new List<string[]>();
+        using (var banco = new Banco(caminhoChaves))
+        using (var consulta = banco.Preparar("SELECT provedor, chave_protegida FROM chaves_locais;"))
+            while (consulta.Ler()) chaves.Add(new[] { consulta.Texto(0), consulta.Texto(1) });
         using (var banco = new Banco(caminho))
         using (var consulta = banco.Preparar("SELECT provedor, modelo, chave_protegida, timeout_segundos, selecionado FROM configuracao_ia;"))
             while (consulta.Ler()) registros.Add(Enumerable.Range(0, 5).Select(consulta.Texto).ToArray());
         return () =>
         {
+            using (var local = new Banco(caminhoChaves))
+            {
+                local.Executar("BEGIN IMMEDIATE;");
+                try
+                {
+                    local.Executar("DELETE FROM chaves_locais;");
+                    foreach (var chave in chaves)
+                    {
+                        using var inserir = local.Preparar("INSERT INTO chaves_locais (provedor, chave_protegida) VALUES (?1, ?2);");
+                        inserir.Vincular(1, chave[0]);
+                        inserir.Vincular(2, chave[1]);
+                        inserir.Ler();
+                    }
+                    local.Executar("COMMIT;");
+                }
+                catch { local.Executar("ROLLBACK;"); throw; }
+            }
             using var banco = new Banco(caminho);
             banco.Executar("BEGIN IMMEDIATE;");
             try
@@ -155,6 +230,7 @@ public sealed class ConfiguracaoIARepository
                     """);
                 Executar("CREATE UNIQUE INDEX IF NOT EXISTS ux_provedor_selecionado ON configuracao_ia(selecionado) WHERE selecionado = 1;");
                 Executar("CREATE TABLE IF NOT EXISTS configuracao_geral (nome TEXT PRIMARY KEY NOT NULL, valor TEXT NOT NULL);");
+                Executar("CREATE TABLE IF NOT EXISTS chaves_locais (provedor TEXT PRIMARY KEY NOT NULL, chave_protegida TEXT NOT NULL);");
                 Executar("PRAGMA user_version = 1;");
             }
             catch { Dispose(); throw; }

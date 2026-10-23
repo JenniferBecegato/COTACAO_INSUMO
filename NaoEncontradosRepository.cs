@@ -11,9 +11,7 @@ public sealed class NaoEncontradosRepository
     private readonly string caminho;
     public NaoEncontradosRepository(string? caminhoBanco = null)
     {
-        caminho = caminhoBanco ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "COTACAO_INSUMO", "configuracoes.db");
+        caminho = caminhoBanco ?? LocalBanco.CaminhoAtual;
     }
 
     private ConfiguracaoIARepository.Banco Abrir()

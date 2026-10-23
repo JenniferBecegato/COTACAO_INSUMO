@@ -1,6 +1,6 @@
 ﻿; Instalador do Campos Cotação — Inno Setup 6.
-; Antes de compilar, atualize a publicação Release com todas as dependências:
-; dotnet publish COTACAO_INSUMO.csproj -c Release -r win-x64 --self-contained true -o bin/Release/Instalador/win-x64 -p:PublishSingleFile=false -p:PublishTrimmed=false
+; Ao compilar, publica automaticamente o código atual em Release com todas as dependências.
+; Requer o SDK do .NET 10 instalado e o comando dotnet disponível no PATH.
 ; Essa pasta contém o aplicativo, suas bibliotecas e o .NET Desktop Runtime.
 ; O computador de destino não precisa baixar nem instalar o .NET separadamente.
 ; Compile este arquivo no Inno Setup para gerar installer/Output/InstaladorCamposCotacao.exe.
@@ -11,11 +11,17 @@
 #define MyAppIcon "Resources\Calculator.ico"
 #define ReleaseDir "bin\Release\Instalador\win-x64"
 
+; Aguarda a publicação e impede o empacotamento de arquivos antigos em caso de erro.
+#define PublishArgs "publish " + AddQuotes(SourcePath + "COTACAO_INSUMO.csproj") + " -c Release -r win-x64 --self-contained true -o " + AddQuotes(SourcePath + ReleaseDir) + " -p:PublishSingleFile=false -p:PublishTrimmed=false"
+#if Exec("dotnet.exe", PublishArgs, SourcePath, 1) != 0
+  #error Falha ao publicar o aplicativo atual. Corrija o erro do dotnet publish e compile novamente; a geração do instalador foi interrompida.
+#endif
+
 #if !FileExists(SourcePath + ReleaseDir + "\COTACAO_INSUMO.exe")
-  #error Execute o comando dotnet publish indicado no início deste arquivo para preparar a pasta Release.
+  #error A publicação não gerou COTACAO_INSUMO.exe na pasta Release esperada.
 #endif
 #if !FileExists(SourcePath + ReleaseDir + "\coreclr.dll") || !FileExists(SourcePath + ReleaseDir + "\hostpolicy.dll") || !FileExists(SourcePath + ReleaseDir + "\System.Windows.Forms.dll")
-  #error A publicação precisa incluir o runtime. Execute dotnet publish com --self-contained true conforme indicado no início deste arquivo.
+  #error A publicação não gerou o runtime completo necessário para o instalador.
 #endif
 
 #define MyAppVersion GetVersionNumbersString(SourcePath + ReleaseDir + "\" + MyAppExeName)

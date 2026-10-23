@@ -540,6 +540,7 @@ namespace COTACAO_INSUMO
 
             try
             {
+                pastaRaizCotacoes = configuracoesIA.CarregarPastaCotacoes();
                 gravarJsonIA = configuracoesIA.CarregarGravacaoJson();
                 percentualMinimoMatch = configuracoesIA.CarregarPercentualMinimoMatch();
                 ConfiguracaoIA? salva = configuracoesIA.Carregar();
@@ -549,7 +550,7 @@ namespace COTACAO_INSUMO
                     modeloIA = salva.Modelo;
                     apiKeyIA = salva.ChaveApi;
                     timeoutIA = salva.TimeoutSegundos;
-                    configuracaoIASalva = true;
+                    configuracaoIASalva = !string.IsNullOrWhiteSpace(apiKeyIA);
                 }
             }
             catch (Exception)
@@ -943,8 +944,11 @@ namespace COTACAO_INSUMO
         // PASTAS
         // =========================================================
 
+        private string pastaRaizCotacoes = "";
+
         private string ObterPastaRaiz()
         {
+            if (!string.IsNullOrWhiteSpace(pastaRaizCotacoes)) return pastaRaizCotacoes;
             return Environment.GetFolderPath(
                 Environment.SpecialFolder.MyDocuments
             );
@@ -3333,7 +3337,102 @@ namespace COTACAO_INSUMO
             LimparConteudo();
             DestacarMenu(btnConfiguracoes);
 
-            Panel tela = CriarContainer(720);
+            Panel tela = CriarContainer(1090);
+            painelConteudo.AutoScroll = true;
+
+            var lblBanco = CriarLabelSecao("Local do banco de dados");
+            lblBanco.Location = new Point(10, 695);
+            var txtPastaBanco = new TextBox
+            {
+                Location = new Point(10, 730), Width = 530,
+                Text = LocalBanco.CarregarPasta(),
+                PlaceholderText = "Vazio: usar a pasta padrão atual"
+            };
+            var btnPastaBanco = CriarBotao("Selecionar pasta", 200, 32);
+            btnPastaBanco.Location = new Point(550, 727);
+            btnPastaBanco.Click += (s, e) =>
+            {
+                using var seletor = new FolderBrowserDialog
+                {
+                    Description = "Selecione a pasta para o banco de dados",
+                    UseDescriptionForTitle = true,
+                    SelectedPath = Directory.Exists(txtPastaBanco.Text) ? txtPastaBanco.Text : ""
+                };
+                if (seletor.ShowDialog(this) == DialogResult.OK)
+                    txtPastaBanco.Text = seletor.SelectedPath;
+            };
+            var lblLocalAtual = CriarTexto("Banco em uso: " + LocalBanco.CaminhoAtual);
+            lblLocalAtual.Location = new Point(10, 770);
+            lblLocalAtual.AutoSize = true;
+            var btnSalvarLocal = CriarBotaoAzul("Salvar local do banco", 200, 38);
+            btnSalvarLocal.Location = new Point(550, 810);
+            btnSalvarLocal.Click += (s, e) =>
+            {
+                try
+                {
+                    LocalBanco.SalvarPasta(txtPastaBanco.Text);
+                    txtPastaBanco.Text = LocalBanco.CarregarPasta();
+                    MessageBox.Show(this,
+                        "Local salvo. Feche e abra o programa para aplicar.\n\n" +
+                        "Se o destino já tiver um banco, ele será utilizado. Caso contrário, o banco atual será copiado.",
+                        "Local do banco", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Não foi possível salvar o local do banco.\n\n" + ex.Message,
+                        "Local do banco", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            tela.Controls.AddRange([lblBanco, txtPastaBanco, btnPastaBanco, lblLocalAtual, btnSalvarLocal]);
+
+            var lblPastaCotacoes = CriarLabelSecao("Pasta raiz das cotações");
+            lblPastaCotacoes.Location = new Point(10, 880);
+            var txtPastaCotacoes = new TextBox
+            {
+                Location = new Point(10, 915), Width = 530,
+                Text = pastaRaizCotacoes,
+                PlaceholderText = "Vazio: usar Documentos"
+            };
+            var btnSelecionarCotacoes = CriarBotao("Selecionar pasta", 200, 32);
+            btnSelecionarCotacoes.Location = new Point(550, 912);
+            btnSelecionarCotacoes.Click += (s, e) =>
+            {
+                using var seletor = new FolderBrowserDialog
+                {
+                    Description = "Selecione a pasta raiz das cotações",
+                    UseDescriptionForTitle = true,
+                    SelectedPath = Directory.Exists(txtPastaCotacoes.Text) ? txtPastaCotacoes.Text : ObterPastaRaiz()
+                };
+                if (seletor.ShowDialog(this) == DialogResult.OK)
+                    txtPastaCotacoes.Text = seletor.SelectedPath;
+            };
+            var lblRaizAtual = CriarTexto("Pasta em uso: " + ObterPastaRaiz());
+            lblRaizAtual.Location = new Point(10, 955);
+            lblRaizAtual.AutoSize = true;
+            var lblEstrutura = CriarTexto("Arquivos organizados por empresa e ano-mês. Arquivos existentes não são movidos.");
+            lblEstrutura.Location = new Point(10, 985);
+            lblEstrutura.AutoSize = true;
+            var btnSalvarCotacoes = CriarBotaoAzul("Salvar pasta das cotações", 250, 38);
+            btnSalvarCotacoes.Location = new Point(500, 1025);
+            btnSalvarCotacoes.Click += (s, e) =>
+            {
+                try
+                {
+                    configuracoesIA.SalvarPastaCotacoes(txtPastaCotacoes.Text);
+                    pastaRaizCotacoes = configuracoesIA.CarregarPastaCotacoes();
+                    txtPastaCotacoes.Text = pastaRaizCotacoes;
+                    lblRaizAtual.Text = "Pasta em uso: " + ObterPastaRaiz();
+                    MessageBox.Show(this, "Pasta salva. As próximas criações e consultas de cotações usarão esse local.",
+                        "Pasta das cotações", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "Não foi possível salvar a pasta das cotações.\n\n" + ex.Message,
+                        "Pasta das cotações", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            tela.Controls.AddRange([lblPastaCotacoes, txtPastaCotacoes, btnSelecionarCotacoes,
+                lblRaizAtual, lblEstrutura, btnSalvarCotacoes]);
 
             Label titulo = CriarTitulo("Configurações");
             titulo.Location = new Point(10, 5);
