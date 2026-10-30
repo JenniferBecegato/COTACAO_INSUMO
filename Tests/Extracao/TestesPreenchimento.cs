@@ -82,6 +82,25 @@ internal static class TestesPreenchimento
         Check(Directory.GetFiles(pasta).Where(x => !arquivosAntes.Contains(x)).SequenceEqual(new[] { caminho }),
             "Nenhuma cópia de cotação ou arquivo temporário deve restar.");
 
+        foreach (bool comMetadados in new[] { false, true })
+        {
+            string comGramas = Criar("quantidade-gramas-" + comMetadados, livro =>
+            {
+                var aba = livro.Worksheet(1);
+                aba.Cell(4, 5).Value = "GRAMAS";
+                aba.Cell(5, 5).Value = .01m;
+                aba.Cell(5, 4).Value = "GRAMAS";
+                if (comMetadados)
+                    livro.CustomProperties.Add("CotacaoGridRoles", System.Text.Json.JsonSerializer.Serialize(
+                        Enumerable.Range(1, 7).Select(c => aba.Cell(4, c).GetString()).ToArray()));
+            });
+            PreenchedorCotacao.Preencher(comGramas, Lote("GALENA", Item("AMORA", .2m)));
+            using var livro = new XLWorkbook(comGramas);
+            Check(livro.Worksheet(1).Cell(5, 4).GetString() == "GALENA" &&
+                livro.Worksheet(1).Cell(5, 5).GetValue<decimal>() == .01m,
+                "GRAMAS não disputa menor preço e sua quantidade é preservada, com ou sem metadados.");
+        }
+
         string similar = Criar("fornecedor-similar", livro => livro.Worksheet(1).Cell(4, 6).Value = "GALENAA");
         Check(PreenchedorCotacao.Preencher(similar, Lote("GALENA", Item("AMORA", 1m))).FornecedoresCriados == 0,
             "Match por similaridade deve evitar coluna duplicada.");

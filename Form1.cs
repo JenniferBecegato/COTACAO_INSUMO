@@ -5773,6 +5773,7 @@ namespace COTACAO_INSUMO
             // SALVAR
             // =========================================================
 
+            Action? atualizarBotaoFaltamComprar = null;
             historico = new HistoricoTabela(dgv, RegistrarDesfazer, () =>
             {
                 if (estrutura.Parent != painelConteudo)
@@ -5790,6 +5791,7 @@ namespace COTACAO_INSUMO
                 temAlteracoes = true;
                 lblAlteracoes.Text = "● Alterações não salvas";
                 lblAlteracoes.ForeColor = Color.Gold;
+                atualizarBotaoFaltamComprar?.Invoke();
             });
             historicoTabelaAtivo = historico;
             indicarAlteracaoTabela = () => { temAlteracoes = true; lblAlteracoes.Text = "● Alterações não salvas"; lblAlteracoes.ForeColor = Color.Gold; };
@@ -5891,12 +5893,56 @@ namespace COTACAO_INSUMO
             btnNaoLocalizados.ForeColor = Color.FromArgb(245, 190, 85);
             topo.Controls.Add(btnNaoLocalizados);
             btnNaoLocalizados.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            Button btnFaltamComprar = CriarBotao("Insumos que faltam comprar", 285, 38);
+            btnFaltamComprar.Location = new Point(15, 65);
+            topo.Controls.Add(btnFaltamComprar);
+            atualizarBotaoFaltamComprar = () => btnFaltamComprar.Text =
+                dgv.Rows.Cast<DataGridViewRow>().SelectMany(linha => linha.Cells.Cast<DataGridViewCell>())
+                    .Any(celula => celula.Tag is PinturaFaltamComprar)
+                    ? "Descolorir insumos que faltam comprar" : "Insumos que faltam comprar";
+            btnFaltamComprar.Click += (s, e) =>
+            {
+                if (!dgv.EndEdit()) return;
+                historico?.Confirmar();
+                var marcadas = dgv.Rows.Cast<DataGridViewRow>()
+                    .SelectMany(linha => linha.Cells.Cast<DataGridViewCell>())
+                    .Where(celula => celula.Tag is PinturaFaltamComprar).ToArray();
+                int quantidade;
+                if (marcadas.Length > 0)
+                {
+                    foreach (var celula in marcadas)
+                    {
+                        var pintura = (PinturaFaltamComprar)celula.Tag!;
+                        // Preserva uma eventual repintura manual feita depois do destaque.
+                        if (celula.Style.BackColor.ToArgb() == pintura.Cor.ToArgb())
+                        {
+                            celula.Style.BackColor = Color.Empty;
+                            celula.Style.ForeColor = pintura.CorTextoAnterior;
+                        }
+                        celula.Tag = null;
+                    }
+                    quantidade = marcadas.Length;
+                    dgv.Invalidate();
+                }
+                else quantidade = PintarPrecosSemCorGrid(dgv);
+                atualizarBotaoFaltamComprar();
+                if (quantidade > 0)
+                {
+                    MarcarAlteracao();
+                    historico?.Confirmar();
+                }
+                else
+                {
+                    MessageBox.Show("Não há preços de insumos sem pintura.",
+                        "Insumos que faltam comprar", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            };
             FlowLayoutPanel legenda = new FlowLayoutPanel
             {
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 WrapContents = true,
-                Location = new Point(15, 90),
+                Location = new Point(15, 115),
                 Margin = Padding.Empty,
                 Padding = Padding.Empty,
                 BackColor = Color.Transparent
@@ -5965,6 +6011,57 @@ namespace COTACAO_INSUMO
                 anoFiltroConsulta = ano;
                 AbrirTelaNaoEncontrados();
             });
+        }
+
+        private sealed record PinturaFaltamComprar(Color Cor, Color CorTextoAnterior);
+
+        private int PintarPrecosSemCorGrid(DataGridView dgv)
+        {
+            var usadas = new HashSet<int>();
+            var pendentes = new List<DataGridViewCell>();
+            var cultura = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+            foreach (DataGridViewRow linha in dgv.Rows)
+            {
+                if (linha.IsNewRow) continue;
+                foreach (DataGridViewCell celula in linha.Cells)
+                {
+                    Color fundo = celula.Style.BackColor;
+                    if (!fundo.IsEmpty)
+                    {
+                        usadas.Add(fundo.ToArgb());
+                        continue;
+                    }
+                    if (!EhColunaFornecedorGrid(dgv.Columns[celula.ColumnIndex])) continue;
+                    string? texto = Convert.ToString(celula.Value, cultura);
+                    if ((decimal.TryParse(texto, System.Globalization.NumberStyles.Any, cultura, out decimal preco)
+                        || decimal.TryParse(texto, System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out preco)) && preco > 0)
+                        pendentes.Add(celula);
+                }
+            }
+            if (pendentes.Count == 0) return 0;
+
+            // Tons claros, fora das cores de status da legenda, com texto escuro legível.
+            Color cor = Color.FromArgb(225, 210, 245);
+            bool encontrada = false;
+            for (int r = 225; r >= 195 && !encontrada; r -= 5)
+                for (int g = 210; g >= 185 && !encontrada; g -= 5)
+                    for (int b = 245; b >= 225; b -= 5)
+                    {
+                        Color candidata = Color.FromArgb(r, g, b);
+                        if (usadas.Contains(candidata.ToArgb())) continue;
+                        cor = candidata;
+                        encontrada = true;
+                        break;
+                    }
+            foreach (var celula in pendentes)
+            {
+                celula.Tag = new PinturaFaltamComprar(cor, celula.Style.ForeColor);
+                celula.Style.BackColor = cor;
+                celula.Style.ForeColor = ObterCorTexto(cor);
+            }
+            dgv.Invalidate();
+            return pendentes.Count;
         }
 
         private void AdicionarCorMenu(ToolStripMenuItem menuPai,DataGridView dgv,string nome,Color cor,Action aoAlterar)

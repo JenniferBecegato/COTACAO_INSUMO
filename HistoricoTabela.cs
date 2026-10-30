@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 namespace COTACAO_INSUMO;
 
 internal sealed class HistoricoTabela
@@ -29,7 +29,7 @@ internal sealed class HistoricoTabela
             Linhas = grid.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).Select(r =>
             {
                 var copia = (DataGridViewRow)r.Clone();
-                for (int i = 0; i < r.Cells.Count; i++) { copia.Cells[i].Value = r.Cells[i].Value; copia.Cells[i].Style = r.Cells[i].Style.Clone(); }
+                for (int i = 0; i < r.Cells.Count; i++) { copia.Cells[i].Value = r.Cells[i].Value; copia.Cells[i].Tag = r.Cells[i].Tag; copia.Cells[i].Style = r.Cells[i].Style.Clone(); }
                 return copia;
             }).ToArray()
         };
@@ -38,7 +38,7 @@ internal sealed class HistoricoTabela
         foreach (var r in estado.Linhas)
         {
             texto.Append(r.Height).Append(':');
-            foreach (DataGridViewCell c in r.Cells) texto.Append(c.Value?.ToString()?.Length ?? -1).Append(':').Append(c.Value).Append('|').Append(c.Style.BackColor.ToArgb()).Append('|').Append(c.Style.ForeColor.ToArgb()).Append(';');
+            foreach (DataGridViewCell c in r.Cells) texto.Append(c.Value?.ToString()?.Length ?? -1).Append(':').Append(c.Value).Append('|').Append(c.Style.BackColor.ToArgb()).Append('|').Append(c.Style.ForeColor.ToArgb()).Append('|').Append(c.Tag).Append(';');
             texto.Append('\n');
         }
         estado.Assinatura = texto.ToString();
@@ -74,7 +74,7 @@ internal sealed class HistoricoTabela
             foreach (var r in estado.Linhas)
             {
                 var copia = (DataGridViewRow)r.Clone();
-                for (int i = 0; i < r.Cells.Count; i++) { copia.Cells[i].Value = r.Cells[i].Value; copia.Cells[i].Style = r.Cells[i].Style.Clone(); }
+                for (int i = 0; i < r.Cells.Count; i++) { copia.Cells[i].Value = r.Cells[i].Value; copia.Cells[i].Tag = r.Cells[i].Tag; copia.Cells[i].Style = r.Cells[i].Style.Clone(); }
                 grid.Rows.Add(copia);
             }
             anterior = Capturar();

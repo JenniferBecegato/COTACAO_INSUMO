@@ -45,7 +45,8 @@ public static class PreenchedorCotacao
         string nome = ComparadorInsumos.NormalizarNome(titulo);
         return nome.Length > 0 && !nome.StartsWith("INSUMO", StringComparison.Ordinal) &&
             !nome.Contains("FORNECEDOR ANTERIOR") && !nome.Contains("FORNECEDOR MAIS EM CONTA") &&
-            !nome.Contains("QUANTIDADE") && nome != "QTD";
+            !nome.Contains("QUANTIDADE") && nome != "QTD" &&
+            !Regex.IsMatch(nome, @"^GRAMAS?(?:$|[\s(/])", RegexOptions.CultureInvariant);
     }
 
     public static ResultadoPreenchimento Preencher(string caminho, InsumosCampos dados,
